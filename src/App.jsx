@@ -9,6 +9,8 @@ gsap.registerPlugin(ScrollTrigger);
 
 const Scene = lazy(() => import('./Scene'));
 const KineticScene = lazy(() => import('./KineticScene'));
+const FRAMER_EASE_OUT = [0.22, 1, 0.36, 1];
+const FRAMER_EASE_OUT_STRONG = [0.16, 1, 0.3, 1];
 
 const FORGE_STACK = [
   { 
@@ -386,7 +388,7 @@ export default function App() {
               <motion.div 
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
-                transition={{ duration: 1, ease: "power4.out" }}
+                transition={{ duration: 1, ease: FRAMER_EASE_OUT_STRONG }}
                 style={{ fontSize: '0.9rem', letterSpacing: '10px', opacity: 0.6, marginBottom: '1.5rem' }}
               >
                 WARPOD STUDIO INITIALIZING
@@ -421,7 +423,7 @@ export default function App() {
             <motion.p 
               initial={{ opacity: 0, y: 30 }}
               animate={!loading ? { opacity: 0.7, y: 0 } : {}}
-              transition={{ duration: 1.5, delay: 1.2, ease: "power3.out" }}
+              transition={{ duration: 1.5, delay: 1.2, ease: FRAMER_EASE_OUT }}
               className="hero-subtitle"
             >
               Architecting High-End Digital Interfaces.
