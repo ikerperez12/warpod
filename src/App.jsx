@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Canvas } from '@react-three/fiber';
 import { motion, AnimatePresence } from 'framer-motion';
 import Lenis from '@studio-freight/lenis';
-import Scene from './Scene';
-import KineticScene from './KineticScene';
 
 gsap.registerPlugin(ScrollTrigger);
+
+const Scene = lazy(() => import('./Scene'));
+const KineticScene = lazy(() => import('./KineticScene'));
 
 const FORGE_STACK = [
   { 
@@ -120,13 +121,52 @@ export default function App() {
   
   const ambientSound = useRef(null);
   const hoverSound = useRef(null);
+  const ambientWasPlayingRef = useRef(false);
 
   useEffect(() => {
-    ambientSound.current = new Audio('/assets/audio/bg-ambient.wav');
-    ambientSound.current.volume = 0.4;
-    ambientSound.current.loop = true;
-    hoverSound.current = new Audio('/assets/audio/hover.mp3');
-    hoverSound.current.volume = 0.05;
+    const ambient = new Audio('/assets/audio/bg-ambient.mp3');
+    ambient.volume = 0.4;
+    ambient.loop = true;
+    ambient.preload = 'auto';
+    ambient.playsInline = true;
+    ambientSound.current = ambient;
+
+    const hover = new Audio('/assets/audio/hover.mp3');
+    hover.volume = 0.05;
+    hover.preload = 'auto';
+    hover.playsInline = true;
+    hoverSound.current = hover;
+
+    const handleVisibilityChange = () => {
+      if (!ambientSound.current) return;
+
+      if (document.hidden) {
+        ambientWasPlayingRef.current = !ambientSound.current.paused;
+        ambientSound.current.pause();
+        return;
+      }
+
+      if (ambientWasPlayingRef.current) {
+        ambientSound.current.play().catch(() => {});
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+      [ambientSound.current, hoverSound.current].forEach((audio) => {
+        if (!audio) return;
+        audio.pause();
+        audio.src = '';
+        audio.load();
+      });
+
+      ambientSound.current = null;
+      hoverSound.current = null;
+      ambientWasPlayingRef.current = false;
+    };
   }, []);
 
   const playHover = () => {
@@ -137,25 +177,25 @@ export default function App() {
   };
 
   useEffect(() => {
+    const interactionEvents = ['click', 'scroll', 'touchstart', 'mousemove'];
     const playAmbient = () => {
       if (ambientSound.current && ambientSound.current.paused) {
         ambientSound.current.play().then(() => {
-          window.removeEventListener('click', playAmbient);
-          window.removeEventListener('scroll', playAmbient);
-          window.removeEventListener('touchstart', playAmbient);
-          window.removeEventListener('mousemove', playAmbient);
+          interactionEvents.forEach((eventName) => {
+            window.removeEventListener(eventName, playAmbient);
+          });
         }).catch(() => {});
       }
     };
-    window.addEventListener('click', playAmbient);
-    window.addEventListener('scroll', playAmbient);
-    window.addEventListener('touchstart', playAmbient);
-    window.addEventListener('mousemove', playAmbient);
+
+    interactionEvents.forEach((eventName) => {
+      window.addEventListener(eventName, playAmbient, { passive: true });
+    });
+
     return () => {
-      window.removeEventListener('click', playAmbient);
-      window.removeEventListener('scroll', playAmbient);
-      window.removeEventListener('touchstart', playAmbient);
-      window.removeEventListener('mousemove', playAmbient);
+      interactionEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, playAmbient);
+      });
     };
   }, []);
 
@@ -166,7 +206,8 @@ export default function App() {
       smooth: true,
     });
     lenis.on('scroll', ScrollTrigger.update);
-    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    const raf = (time) => lenis.raf(time * 1000);
+    gsap.ticker.add(raf);
     gsap.ticker.lagSmoothing(0);
 
     const xTo = gsap.quickTo(cursorRef.current, "x", {duration: 0.15, ease: "power2.out"});
@@ -178,13 +219,14 @@ export default function App() {
     window.addEventListener('mousemove', moveCursor);
 
     let ctx;
+    let loadTimeoutId;
     let p = 0;
     const interval = setInterval(() => {
       p += 2;
       setProgress(p);
       if (p >= 100) {
         clearInterval(interval);
-        setTimeout(() => {
+        loadTimeoutId = window.setTimeout(() => {
            setLoading(false);
            ctx = gsap.context(() => {
              // Hero Title
@@ -313,8 +355,11 @@ export default function App() {
     return () => {
       window.removeEventListener('mousemove', moveCursor);
       clearInterval(interval);
+      if (loadTimeoutId) {
+        window.clearTimeout(loadTimeoutId);
+      }
       lenis.destroy();
-      gsap.ticker.remove(lenis.raf);
+      gsap.ticker.remove(raf);
       if (ctx) ctx.revert();
     };
   }, []);
@@ -360,7 +405,9 @@ export default function App() {
       <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 2s ease', visibility: loading ? 'hidden' : 'visible' }}>
         <div className="canvas-container">
           <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 8], fov: 45 }} gl={{ powerPreference: "high-performance", antialias: true, alpha: false }}>
-            <Scene />
+            <Suspense fallback={null}>
+              <Scene />
+            </Suspense>
           </Canvas>
         </div>
         
@@ -419,7 +466,7 @@ export default function App() {
               {FORGE_STACK.map((item, i) => (
                 <div key={i} className="forge-item" ref={el => forgeItemsRef.current[i] = el}>
                   <div className="forge-icon">
-                    <img src={`/assets/icons/${item.icon}`} alt={item.name} style={{ width: '100%' }} />
+                    <img src={`/assets/icons/${item.icon}`} alt={item.name} loading="lazy" decoding="async" style={{ width: '100%' }} />
                   </div>
                   <div className="forge-text">
                     <h4>{item.name}</h4>
@@ -448,7 +495,7 @@ export default function App() {
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_4.jpg" alt="P1" />
+                    <img src="/assets/images/premium_bg_4.jpg" alt="Luxury systems interface showcase" loading="lazy" decoding="async" />
                   </div>
                   <div className="project-info">
                     <h3>Luxury<br/>Systems.</h3>
@@ -463,14 +510,14 @@ export default function App() {
                     <p>Redefining the digital shopping experience through seamless UX and immersive brand storytelling.</p>
                   </div>
                   <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_1.jpg" alt="P2" />
+                    <img src="/assets/images/premium_bg_1.jpg" alt="Interactive retail visual concept" loading="lazy" decoding="async" />
                   </div>
                 </div>
               </div>
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <video src="/assets/videos/15616403_3840_2160_60fps.mp4" autoPlay loop muted playsInline preload="auto" />
+                    <video src="/assets/videos/15616403_3840_2160_60fps.mp4" autoPlay loop muted playsInline preload="metadata" />
                   </div>
                   <div className="project-info">
                     <h3>Motion<br/>Identity.</h3>
@@ -485,7 +532,7 @@ export default function App() {
                     <p>Scalable design systems that empower teams to build consistent and beautiful products at speed.</p>
                   </div>
                   <div className="project-image-box">
-                    <img src="/assets/images/bg1.jpg" alt="P4" />
+                    <img src="/assets/images/bg1.jpg" alt="Digital core design system showcase" loading="lazy" decoding="async" />
                   </div>
                 </div>
               </div>
@@ -499,7 +546,7 @@ export default function App() {
             </div>
             <div className="story-layer" style={{ zIndex: 2 }}>
               <div className="story-floating-img" ref={storyImgRef}>
-                <img src="/assets/images/premium_bg_3.jpg" alt="Vision" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src="/assets/images/premium_bg_3.jpg" alt="Creative vision concept artwork" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             </div>
             <div className="story-layer" style={{ zIndex: 3 }}>
@@ -511,13 +558,13 @@ export default function App() {
           <section className="deck-section" ref={deckSectionRef}>
              <div className="deck-container">
                <div className="deck-card" style={{ zIndex: 1 }}>
-                  <img src="/assets/images/premium_bg_1.jpg" alt="UI Case A" />
+                  <img src="/assets/images/premium_bg_1.jpg" alt="Premium interface case study A" loading="lazy" decoding="async" />
                </div>
                <div className="deck-card" style={{ zIndex: 2 }}>
-                  <img src="/assets/images/premium_bg_2.jpg" alt="UI Case B" />
+                  <img src="/assets/images/premium_bg_2.jpg" alt="Premium interface case study B" loading="lazy" decoding="async" />
                </div>
                <div className="deck-card" style={{ zIndex: 3 }}>
-                  <img src="/assets/images/bg1.jpg" alt="UI Case C" />
+                  <img src="/assets/images/bg1.jpg" alt="Premium interface case study C" loading="lazy" decoding="async" />
                </div>
              </div>
           </section>

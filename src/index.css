@@ -483,6 +483,12 @@ body::before {
   object-fit: cover;
 }
 
+.project-image-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .project-info {
   width: 40%;
 }
@@ -642,4 +648,225 @@ body::before {
   height: 100vh;
   width: 100vw;
   z-index: 5;
+}
+
+@media (pointer: coarse), (hover: none) {
+  body {
+    cursor: auto;
+  }
+
+  .custom-cursor {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body {
+    cursor: auto;
+  }
+
+  .custom-cursor {
+    display: none;
+  }
+
+  .glass-card:hover,
+  .rv:hover,
+  .list-item:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .section {
+    padding: 12vw 8vw;
+  }
+
+  .hero-title {
+    font-size: 22vw;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem;
+    letter-spacing: 0.14em;
+    line-height: 1.5;
+    text-align: center;
+    max-width: 28rem;
+  }
+
+  .marquee-container {
+    padding: 5rem 0;
+  }
+
+  .marquee-text {
+    font-size: 18vw;
+    padding: 0 2rem;
+  }
+
+  .scrub-section {
+    padding: 16vw 8vw;
+  }
+
+  .scrub-text {
+    font-size: 10vw;
+  }
+
+  .glass-card {
+    padding: 3rem 1.75rem;
+    border-radius: 32px;
+  }
+
+  .glass-card h2 {
+    font-size: 18vw;
+    margin-bottom: 1.5rem;
+  }
+
+  .glass-card h3 {
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .philosophy-text {
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  .forge-title {
+    width: 100%;
+    padding: 0 8vw;
+    font-size: 9vw;
+    letter-spacing: 0.4rem;
+    text-align: center;
+  }
+
+  .forge-icon {
+    width: 45vw;
+    margin-bottom: 2rem;
+  }
+
+  .forge-text h4 {
+    font-size: 12vw;
+  }
+
+  .forge-text p {
+    font-size: 1.05rem;
+  }
+
+  .project-content {
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .project-image-box,
+  .project-info {
+    width: 100%;
+  }
+
+  .project-info h3 {
+    font-size: 14vw;
+  }
+
+  .project-info p {
+    font-size: 1.05rem;
+  }
+
+  .story-bg-text {
+    font-size: 34vw;
+  }
+
+  .story-floating-img {
+    width: 78vw;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .rv {
+    border-radius: 28px;
+  }
+
+  .rv-value {
+    font-size: clamp(2.5rem, 10vw, 4rem);
+  }
+
+  .rv-value.tiny {
+    font-size: clamp(1.4rem, 6vw, 2.2rem);
+  }
+
+  .deck-section {
+    min-height: 110vh;
+    padding: 0 6vw;
+  }
+
+  .deck-container {
+    width: 88vw;
+    height: 54vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .section {
+    padding: 16vw 7vw;
+  }
+
+  .hero-title {
+    font-size: 24vw;
+  }
+
+  .hero-subtitle {
+    font-size: 0.82rem;
+    letter-spacing: 0.12em;
+    margin-top: 2rem;
+  }
+
+  .progress-bar-container {
+    width: min(300px, 72vw);
+  }
+
+  .glass-card {
+    padding: 2.5rem 1.25rem;
+    border-radius: 24px;
+  }
+
+  .scrub-text,
+  .forge-text h4,
+  .project-info h3 {
+    line-height: 0.95;
+  }
+
+  .project-panel {
+    padding: 8vw 6vw;
+  }
+
+  .project-image-box {
+    border-radius: 22px;
+  }
+
+  .project-info p,
+  .forge-text p,
+  .philosophy-text {
+    font-size: 0.98rem;
+  }
+
+  .story-floating-img {
+    width: 84vw;
+  }
+
+  .deck-container {
+    height: 48vh;
+  }
 }
