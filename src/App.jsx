@@ -12,6 +12,22 @@ gsap.registerPlugin(ScrollTrigger);
 const FRAMER_EASE_OUT = [0.22, 1, 0.36, 1];
 const FRAMER_EASE_OUT_STRONG = [0.16, 1, 0.3, 1];
 
+class CanvasBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('3D canvas failed to render', error);
+  }
+
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
+
 const FORGE_STACK = [
   { 
     name: 'React 19', 
@@ -183,6 +199,7 @@ export default function App() {
 
     let ctx;
     let p = 0;
+    const refreshTimeouts = [];
     const interval = setInterval(() => {
       p += 2;
       setProgress(p);
@@ -314,6 +331,8 @@ export default function App() {
              });
 
              requestAnimationFrame(() => ScrollTrigger.refresh());
+             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 500));
+             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 1500));
            }, containerRef);
         }, 200);
       }
@@ -322,6 +341,7 @@ export default function App() {
     return () => {
       window.removeEventListener('mousemove', moveCursor);
       clearInterval(interval);
+      refreshTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
       lenis.destroy();
       gsap.ticker.remove(raf);
       if (ctx) ctx.revert();
@@ -368,9 +388,11 @@ export default function App() {
       
       <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 2s ease', visibility: loading ? 'hidden' : 'visible' }}>
         <div className="canvas-container">
-          <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 8], fov: 45 }} gl={{ powerPreference: "high-performance", antialias: true, alpha: false }}>
-            <Scene />
-          </Canvas>
+          <CanvasBoundary>
+            <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 8], fov: 45 }} gl={{ powerPreference: "high-performance", antialias: true, alpha: false }}>
+              <Scene />
+            </Canvas>
+          </CanvasBoundary>
         </div>
         
         <main className="content">
@@ -564,11 +586,13 @@ export default function App() {
                <h2 style={{ fontSize: '8vw', fontWeight: 900, opacity: 0.3 }}>KINETIC CORE</h2>
             </div>
             <div className="local-canvas-wrapper" style={{ height: '80vh' }}>
-              <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 10], fov: 45 }}>
-                <Suspense fallback={null}>
-                  <KineticScene />
-                </Suspense>
-              </Canvas>
+              <CanvasBoundary>
+                <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 10], fov: 45 }}>
+                  <Suspense fallback={null}>
+                    <KineticScene />
+                  </Suspense>
+                </Canvas>
+              </CanvasBoundary>
             </div>
           </section>
 

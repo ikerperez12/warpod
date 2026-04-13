@@ -49,7 +49,7 @@ export default function KineticScene() {
   return (
     <>
       <color attach="background" args={['#000000']} />
-      <Environment preset="city" />
+      <Environment files="/assets/models/env.hdr" background={false} resolution={256} />
       <ambientLight intensity={0.5} />
       <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={2} />
       <pointLight position={[-10, -10, -10]} color="#ff0077" intensity={2} />
