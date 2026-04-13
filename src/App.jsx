@@ -156,6 +156,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    const passiveListener = { passive: true };
     const playAmbient = () => {
       if (ambientSound.current && ambientSound.current.paused) {
         ambientSound.current.play().then(() => {
@@ -167,9 +168,9 @@ export default function App() {
       }
     };
     window.addEventListener('click', playAmbient);
-    window.addEventListener('scroll', playAmbient);
-    window.addEventListener('touchstart', playAmbient);
-    window.addEventListener('mousemove', playAmbient);
+    window.addEventListener('scroll', playAmbient, passiveListener);
+    window.addEventListener('touchstart', playAmbient, passiveListener);
+    window.addEventListener('mousemove', playAmbient, passiveListener);
     return () => {
       window.removeEventListener('click', playAmbient);
       window.removeEventListener('scroll', playAmbient);
@@ -195,7 +196,7 @@ export default function App() {
       xTo(e.clientX);
       yTo(e.clientY);
     };
-    window.addEventListener('mousemove', moveCursor);
+    window.addEventListener('mousemove', moveCursor, { passive: true });
 
     let ctx;
     let p = 0;
@@ -235,7 +236,7 @@ export default function App() {
                );
              });
 
-             const getCurtainSeed = () => {
+             const getCurtainMaskSeed = () => {
                const isCompact = window.matchMedia('(max-width: 700px)').matches;
                const width = isCompact
                  ? Math.min(Math.max(window.innerWidth * 0.52, 150), 260)
@@ -244,28 +245,31 @@ export default function App() {
                  ? Math.min(Math.max(window.innerHeight * 0.24, 150), 300)
                  : Math.min(Math.max(window.innerHeight * 0.28, 180), 420);
 
-               return {
-                 width: `${width}px`,
-                 height: `${height}px`,
-                 borderRadius: "999px",
-                 scale: 0.94,
-                 boxShadow: "0 32px 100px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.16)"
-               };
+               return `ellipse(${Math.round(width / 2)}px ${Math.round(height / 2)}px at 50% 50%)`;
              };
 
              // Curtain 1
              const curtain1Tl = gsap.timeline({
-               scrollTrigger: { trigger: curtain1Ref.current, start: "top top", end: "+=150%", scrub: true, pin: true }
+               scrollTrigger: {
+                 trigger: curtain1Ref.current,
+                 start: "top top",
+                 end: "+=150%",
+                 scrub: 0.45,
+                 pin: true,
+                 anticipatePin: 1,
+                 invalidateOnRefresh: true
+               }
              });
+             const initialCurtainMask = getCurtainMaskSeed();
              curtain1Tl.fromTo(
                curtainMedia1Ref.current,
-               getCurtainSeed(),
                {
-                 width: "100vw",
-                 height: "100vh",
-                 borderRadius: "0px",
-                 scale: 1,
-                 boxShadow: "0 0 0 rgba(0, 0, 0, 0)",
+                 clipPath: initialCurtainMask,
+                 webkitClipPath: initialCurtainMask
+               },
+               {
+                 clipPath: "ellipse(100vw 100vh at 50% 50%)",
+                 webkitClipPath: "ellipse(100vw 100vh at 50% 50%)",
                  ease: "none"
                }
              )
@@ -457,7 +461,7 @@ export default function App() {
           <section className="curtain-section" ref={curtain1Ref}>
             <div className="curtain-sticky">
               <div className="curtain-media" ref={curtainMedia1Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/12061631_3840_2160_24fps.mp4" autoPlay loop muted playsInline preload="auto" />
+                <video src="/assets/videos/creative-vision-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
               </div>
               <h2 className="curtain-text" ref={curtainText1Ref}>
                 CREATIVE<br/>VISION.
