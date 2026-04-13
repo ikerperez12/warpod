@@ -187,12 +187,19 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [perfProfile, setPerfProfile] = useState(() => getPerformanceProfile());
   const [shouldMountKineticCanvas, setShouldMountKineticCanvas] = useState(false);
+  const [shouldLoadForgeMedia, setShouldLoadForgeMedia] = useState(
+    () => !getPerformanceProfile().shouldConserve
+  );
+  const [shouldLoadDigitalMasteryVideo, setShouldLoadDigitalMasteryVideo] = useState(
+    () => !getPerformanceProfile().shouldConserve
+  );
   const cursorRef = useRef(null);
   
   const ambientSound = useRef(null);
   const hoverSound = useRef(null);
 
   const {
+    shouldConserve,
     enableCursor,
     enableLenis,
     allowHoverAudio,
@@ -234,6 +241,56 @@ export default function App() {
     observer.observe(target);
     return () => observer.disconnect();
   }, [kineticPosterOnly]);
+
+  useEffect(() => {
+    if (!perfProfile.shouldConserve) {
+      setShouldLoadForgeMedia(true);
+      return;
+    }
+
+    if (shouldLoadForgeMedia) return;
+
+    const target = forgeSectionRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoadForgeMedia(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '900px 0px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [perfProfile.shouldConserve, shouldLoadForgeMedia]);
+
+  useEffect(() => {
+    if (!perfProfile.shouldConserve) {
+      setShouldLoadDigitalMasteryVideo(true);
+      return;
+    }
+
+    if (shouldLoadDigitalMasteryVideo) return;
+
+    const target = curtain2Ref.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoadDigitalMasteryVideo(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '1400px 0px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [perfProfile.shouldConserve, shouldLoadDigitalMasteryVideo]);
 
   useEffect(() => {
     ambientSound.current = null;
@@ -308,10 +365,84 @@ export default function App() {
     }
 
     let ctx;
+    const deferredContexts = [];
+    const deferredHandles = [];
+
+    const scheduleDeferredSection = (callback, timeout = 600) => {
+      const run = () => {
+        deferredContexts.push(
+          gsap.context(() => {
+            callback();
+          }, containerRef)
+        );
+        refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 80));
+      };
+
+      if ('requestIdleCallback' in window) {
+        const handle = window.requestIdleCallback(run, { timeout });
+        deferredHandles.push({ type: 'idle', handle });
+      } else {
+        const handle = window.setTimeout(run, Math.min(timeout, 320));
+        deferredHandles.push({ type: 'timeout', handle });
+      }
+    };
+
+    const getCurtainMaskSeed = () => {
+      const isCompact = window.matchMedia('(max-width: 700px)').matches;
+      const width = isCompact
+        ? Math.min(Math.max(window.innerWidth * 0.52, 150), 260)
+        : Math.min(Math.max(window.innerWidth * 0.18, 180), 360);
+      const height = isCompact
+        ? Math.min(Math.max(window.innerHeight * 0.24, 150), 300)
+        : Math.min(Math.max(window.innerHeight * 0.28, 180), 420);
+
+      return `ellipse(${Math.round(width / 2)}px ${Math.round(height / 2)}px at 50% 50%)`;
+    };
+
+    const setupCurtainReveal = (trigger, media, text) => {
+      const fullMask = "ellipse(100vw 100vh at 50% 50%)";
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger,
+          start: "top top",
+          end: "+=220%",
+          scrub: 0.6,
+          pin: true,
+          anticipatePin: 1,
+          invalidateOnRefresh: true
+        }
+      });
+
+      tl.fromTo(
+        media,
+        {
+          clipPath: () => getCurtainMaskSeed(),
+          webkitClipPath: () => getCurtainMaskSeed()
+        },
+        {
+          clipPath: fullMask,
+          webkitClipPath: fullMask,
+          ease: "none",
+          duration: 1.05
+        }
+      )
+        .to(text, { opacity: 1, scale: 1.2, y: 0, duration: 0.45 }, "-=0.22")
+        .to(text, { opacity: 1, scale: 1.22, y: -8, duration: 0.2 })
+        .to(text, { opacity: 0, scale: 1.5, y: -100, duration: 0.45 })
+        .to(media, {
+          clipPath: () => getCurtainMaskSeed(),
+          webkitClipPath: () => getCurtainMaskSeed(),
+          ease: "none",
+          duration: 0.9
+        }, "-=0.04");
+
+      return tl;
+    };
+
     let p = 0;
     const refreshTimeouts = [];
     const interval = setInterval(() => {
-      p += 2;
+      p += shouldConserve ? 5 : 2;
       setProgress(p);
       if (p >= 100) {
         clearInterval(interval);
@@ -330,77 +461,31 @@ export default function App() {
 
              // Scrub Section (STAR WARS PROGRESSIVE EFFECT)
              const scrubWords = gsap.utils.toArray('.scrub-word');
-             scrubWords.forEach((word, i) => {
-               gsap.fromTo(word, 
-                 { opacity: 0, y: 100, scale: 0.5, filter: 'blur(10px)' },
-                 { 
-                   opacity: 1, y: 0, scale: 1, filter: 'blur(0px)',
-                   scrollTrigger: {
-                     trigger: ".scrub-section",
-                     start: `top+=${i * 30} center`,
-                     end: `top+=${i * 30 + 300} center`,
-                     scrub: 1.5
-                   }
-                 }
-               );
-             });
-
-             const getCurtainMaskSeed = () => {
-               const isCompact = window.matchMedia('(max-width: 700px)').matches;
-               const width = isCompact
-                 ? Math.min(Math.max(window.innerWidth * 0.52, 150), 260)
-                 : Math.min(Math.max(window.innerWidth * 0.18, 180), 360);
-               const height = isCompact
-                 ? Math.min(Math.max(window.innerHeight * 0.24, 150), 300)
-                 : Math.min(Math.max(window.innerHeight * 0.28, 180), 420);
-
-               return `ellipse(${Math.round(width / 2)}px ${Math.round(height / 2)}px at 50% 50%)`;
-             };
-
-             const setupCurtainReveal = (trigger, media, text) => {
-               const fullMask = "ellipse(100vw 100vh at 50% 50%)";
-               const tl = gsap.timeline({
+             gsap.fromTo(scrubWords,
+               { opacity: 0, y: 100, scale: 0.5, filter: 'blur(10px)' },
+               {
+                 opacity: 1,
+                 y: 0,
+                 scale: 1,
+                 filter: 'blur(0px)',
+                 stagger: 0.08,
                  scrollTrigger: {
-                   trigger,
-                   start: "top top",
-                   end: "+=220%",
-                   scrub: 0.6,
-                   pin: true,
-                   anticipatePin: 1,
-                   invalidateOnRefresh: true
+                   trigger: ".scrub-section",
+                   start: "top 78%",
+                   end: "bottom center",
+                   scrub: 1.2
                  }
-               });
-
-               tl.fromTo(
-                 media,
-                 {
-                   clipPath: () => getCurtainMaskSeed(),
-                   webkitClipPath: () => getCurtainMaskSeed()
-                 },
-                 {
-                   clipPath: fullMask,
-                   webkitClipPath: fullMask,
-                   ease: "none",
-                   duration: 1.05
-                 }
-               )
-                 .to(text, { opacity: 1, scale: 1.2, y: 0, duration: 0.45 }, "-=0.22")
-                 .to(text, { opacity: 1, scale: 1.22, y: -8, duration: 0.2 })
-                 .to(text, { opacity: 0, scale: 1.5, y: -100, duration: 0.45 })
-                 .to(media, {
-                   clipPath: () => getCurtainMaskSeed(),
-                   webkitClipPath: () => getCurtainMaskSeed(),
-                   ease: "none",
-                   duration: 0.9
-                 }, "-=0.04");
-
-               return tl;
-             };
+               }
+             );
 
              // Curtain 1
              setupCurtainReveal(curtain1Ref.current, curtainMedia1Ref.current, curtainText1Ref.current);
 
-             // The Forge Timeline (ULTRA REDUCED TO 90%)
+             requestAnimationFrame(() => ScrollTrigger.refresh());
+             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 450));
+           }, containerRef);
+
+           scheduleDeferredSection(() => {
              const forgeTl = gsap.timeline({
                scrollTrigger: {
                  trigger: forgeSectionRef.current,
@@ -413,19 +498,21 @@ export default function App() {
 
              FORGE_STACK.forEach((item, i) => {
                const el = forgeItemsRef.current[i];
+               if (!el) return;
+
                const icon = el.querySelector('.forge-icon');
                const text = el.querySelector('.forge-text');
-               
-               forgeTl.to(el, { opacity: 1, pointerEvents: 'auto', duration: 1 })
-                      .from(icon, { z: -800, rotateY: 45, filter: 'blur(15px)', duration: 1 }, "-=1")
-                      .from(text, { y: 50, opacity: 0, duration: 1 }, "-=0.5")
-                      .to(el, { opacity: 0, pointerEvents: 'none', y: -50, filter: 'blur(5px)', duration: 1, delay: 0.1 });
-             });
 
-             // Curtain 2
+               forgeTl.to(el, { opacity: 1, pointerEvents: 'auto', duration: 1 })
+                 .from(icon, { z: -800, rotateY: 45, filter: 'blur(15px)', duration: 1 }, "-=1")
+                 .from(text, { y: 50, opacity: 0, duration: 1 }, "-=0.5")
+                 .to(el, { opacity: 0, pointerEvents: 'none', y: -50, filter: 'blur(5px)', duration: 1, delay: 0.1 });
+             });
+           }, 500);
+
+           scheduleDeferredSection(() => {
              setupCurtainReveal(curtain2Ref.current, curtainMedia2Ref.current, curtainText2Ref.current);
 
-             // Horizontal Projects
              gsap.to(horizontalWrapperRef.current, {
                x: () => -(horizontalWrapperRef.current.scrollWidth - window.innerWidth),
                ease: "none",
@@ -438,15 +525,16 @@ export default function App() {
                  invalidateOnRefresh: true
                }
              });
+           }, 850);
 
-             // Story Parallax
+           scheduleDeferredSection(() => {
              const storyTl = gsap.timeline({
                scrollTrigger: { trigger: storySectionRef.current, start: "top top", end: "bottom top", scrub: true }
              });
-             storyTl.to(storyTextRef.current, { xPercent: -20, ease: "none" }, 0)
-                    .from(storyImgRef.current, { scale: 1.4, yPercent: 20, ease: "none" }, 0);
 
-             // Deck Section
+             storyTl.to(storyTextRef.current, { xPercent: -20, ease: "none" }, 0)
+               .from(storyImgRef.current, { scale: 1.4, yPercent: 20, ease: "none" }, 0);
+
              const deckTl = gsap.timeline({
                scrollTrigger: {
                  trigger: deckSectionRef.current,
@@ -456,8 +544,8 @@ export default function App() {
                  scrub: true
                }
              });
-             const cards = gsap.utils.toArray('.deck-card');
-             cards.forEach((card, i) => {
+
+             gsap.utils.toArray('.deck-card').forEach((card, i) => {
                deckTl.to(card, {
                  rotationZ: (i - 1) * 15,
                  xPercent: (i - 1) * 10,
@@ -466,8 +554,9 @@ export default function App() {
                  duration: 1
                }, 0);
              });
+           }, 1200);
 
-             // List items
+           scheduleDeferredSection(() => {
              const listItems = gsap.utils.toArray('.list-item');
              if (listItems.length) {
                gsap.from(listItems, {
@@ -476,29 +565,33 @@ export default function App() {
                });
              }
 
-             // Footer
              gsap.from('.footer-content', {
-               y: 100, opacity: 0, duration: 2, ease: "expo.out", 
+               y: 100, opacity: 0, duration: 2, ease: "expo.out",
                scrollTrigger: { trigger: ".footer-section", start: "top 95%" }
              });
-
-             requestAnimationFrame(() => ScrollTrigger.refresh());
-             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 500));
-             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 1500));
-           }, containerRef);
-        }, 200);
+           }, 1500);
+        }, shouldConserve ? 120 : 200);
       }
-    }, 20);
+    }, shouldConserve ? 16 : 20);
     
     return () => {
       if (moveCursor) window.removeEventListener('mousemove', moveCursor);
       clearInterval(interval);
       refreshTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      deferredHandles.forEach(({ type, handle }) => {
+        if (type === 'idle' && 'cancelIdleCallback' in window) {
+          window.cancelIdleCallback(handle);
+          return;
+        }
+
+        window.clearTimeout(handle);
+      });
+      deferredContexts.forEach((context) => context.revert());
       lenis?.destroy();
       if (lenis) gsap.ticker.remove(raf);
       if (ctx) ctx.revert();
     };
-  }, [enableCursor, enableLenis]);
+  }, [enableCursor, enableLenis, shouldConserve]);
 
   const handleCursorHover = (type) => {
     if (!enableCursor) return;
@@ -507,6 +600,10 @@ export default function App() {
       if (type) playHover();
     }
   };
+
+  const digitalMasteryVideoSrc = shouldLoadDigitalMasteryVideo
+    ? '/assets/videos/digital-mastery-1080p.mp4'
+    : undefined;
 
   return (
     <>
@@ -607,7 +704,13 @@ export default function App() {
               {FORGE_STACK.map((item, i) => (
                 <div key={i} className="forge-item" ref={el => forgeItemsRef.current[i] = el}>
                   <div className="forge-icon">
-                    <img src={`/assets/icons/${item.icon}`} alt={item.name} loading="lazy" decoding="async" style={{ width: '100%' }} />
+                    <img
+                      src={shouldLoadForgeMedia ? `/assets/icons/${item.icon}` : undefined}
+                      alt={item.name}
+                      loading="lazy"
+                      decoding="async"
+                      style={{ width: '100%' }}
+                    />
                   </div>
                   <div className="forge-text">
                     <h4>{item.name}</h4>
@@ -622,7 +725,14 @@ export default function App() {
           <section className="curtain-section" ref={curtain2Ref}>
             <div className="curtain-sticky">
               <div className="curtain-media" ref={curtainMedia2Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
+                <video
+                  src={digitalMasteryVideoSrc}
+                  autoPlay={shouldLoadDigitalMasteryVideo}
+                  loop
+                  muted
+                  playsInline
+                  preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
+                />
               </div>
               <h2 className="curtain-text" ref={curtainText2Ref}>
                 DIGITAL<br/>MASTERY.
@@ -658,7 +768,14 @@ export default function App() {
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
+                    <video
+                      src={digitalMasteryVideoSrc}
+                      autoPlay={shouldLoadDigitalMasteryVideo}
+                      loop
+                      muted
+                      playsInline
+                      preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
+                    />
                   </div>
                   <div className="project-info">
                     <h3>Motion<br/>Identity.</h3>
