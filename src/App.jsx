@@ -235,11 +235,40 @@ export default function App() {
                );
              });
 
+             const getCurtainSeed = () => {
+               const isCompact = window.matchMedia('(max-width: 700px)').matches;
+               const width = isCompact
+                 ? Math.min(Math.max(window.innerWidth * 0.52, 150), 260)
+                 : Math.min(Math.max(window.innerWidth * 0.18, 180), 360);
+               const height = isCompact
+                 ? Math.min(Math.max(window.innerHeight * 0.24, 150), 300)
+                 : Math.min(Math.max(window.innerHeight * 0.28, 180), 420);
+
+               return {
+                 width: `${width}px`,
+                 height: `${height}px`,
+                 borderRadius: "999px",
+                 scale: 0.94,
+                 boxShadow: "0 32px 100px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.16)"
+               };
+             };
+
              // Curtain 1
              const curtain1Tl = gsap.timeline({
                scrollTrigger: { trigger: curtain1Ref.current, start: "top top", end: "+=150%", scrub: true, pin: true }
              });
-             curtain1Tl.to(curtainMedia1Ref.current, { width: "100vw", height: "100vh", borderRadius: "0px", ease: "none" })
+             curtain1Tl.fromTo(
+               curtainMedia1Ref.current,
+               getCurtainSeed(),
+               {
+                 width: "100vw",
+                 height: "100vh",
+                 borderRadius: "0px",
+                 scale: 1,
+                 boxShadow: "0 0 0 rgba(0, 0, 0, 0)",
+                 ease: "none"
+               }
+             )
                        .to(curtainText1Ref.current, { opacity: 1, scale: 1.2, y: 0, duration: 0.5 }, "-=0.3")
                        .to(curtainText1Ref.current, { opacity: 0, scale: 1.5, y: -100, duration: 0.5 }, "+=0.2");
 

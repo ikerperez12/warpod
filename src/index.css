@@ -290,6 +290,80 @@ body::before {
   -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.3);
 }
 
+/* CURTAIN VIDEO REVEAL */
+.curtain-section {
+  min-height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+  background: #020205;
+}
+
+.curtain-sticky {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.curtain-media {
+  width: clamp(180px, 18vw, 360px);
+  height: clamp(180px, 28vh, 420px);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  background: #000;
+  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.16);
+  will-change: width, height, border-radius, transform, box-shadow;
+  transform: translateZ(0);
+}
+
+.curtain-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.14), transparent 38%),
+    linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.34) 100%);
+  mix-blend-mode: screen;
+  opacity: 0.45;
+}
+
+.curtain-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.08);
+  filter: contrast(1.06) saturate(1.05);
+}
+
+.curtain-text {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -40%) scale(0.92);
+  width: min(90vw, 1500px);
+  color: #fff;
+  font-size: clamp(4rem, 13vw, 15rem);
+  font-weight: 900;
+  line-height: 0.78;
+  letter-spacing: -0.07em;
+  text-align: center;
+  text-transform: uppercase;
+  opacity: 0;
+  mix-blend-mode: difference;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
 /* LIST SECTION */
 .list-section {
   width: 100vw;
@@ -642,4 +716,17 @@ body::before {
   height: 100vh;
   width: 100vw;
   z-index: 5;
+}
+
+@media (max-width: 700px) {
+  .curtain-media {
+    width: clamp(150px, 52vw, 260px);
+    height: clamp(150px, 24vh, 300px);
+  }
+
+  .curtain-text {
+    font-size: clamp(3.2rem, 21vw, 7rem);
+    line-height: 0.84;
+    letter-spacing: -0.06em;
+  }
 }
