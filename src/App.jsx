@@ -338,11 +338,14 @@ export default function App() {
                }, 0);
              });
 
-             // List items
-             gsap.from('.list-item', {
-               x: -50, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out", 
-               scrollTrigger: { trigger: ".list-section", start: "top 90%" }
-             });
+             // List items are optional in the current composition; keep the effect ready without warning when absent.
+             const listItems = gsap.utils.toArray('.list-item');
+             if (listItems.length) {
+               gsap.from(listItems, {
+                 x: -50, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out",
+                 scrollTrigger: { trigger: ".list-section", start: "top 90%" }
+               });
+             }
 
              // Footer
              gsap.from('.footer-content', {
