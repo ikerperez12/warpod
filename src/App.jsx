@@ -248,33 +248,48 @@ export default function App() {
                return `ellipse(${Math.round(width / 2)}px ${Math.round(height / 2)}px at 50% 50%)`;
              };
 
+             const setupCurtainReveal = (trigger, media, text) => {
+               const fullMask = "ellipse(100vw 100vh at 50% 50%)";
+               const tl = gsap.timeline({
+                 scrollTrigger: {
+                   trigger,
+                   start: "top top",
+                   end: "+=220%",
+                   scrub: 0.6,
+                   pin: true,
+                   anticipatePin: 1,
+                   invalidateOnRefresh: true
+                 }
+               });
+
+               tl.fromTo(
+                 media,
+                 {
+                   clipPath: () => getCurtainMaskSeed(),
+                   webkitClipPath: () => getCurtainMaskSeed()
+                 },
+                 {
+                   clipPath: fullMask,
+                   webkitClipPath: fullMask,
+                   ease: "none",
+                   duration: 1.05
+                 }
+               )
+                 .to(text, { opacity: 1, scale: 1.2, y: 0, duration: 0.45 }, "-=0.22")
+                 .to(text, { opacity: 1, scale: 1.22, y: -8, duration: 0.2 })
+                 .to(text, { opacity: 0, scale: 1.5, y: -100, duration: 0.45 })
+                 .to(media, {
+                   clipPath: () => getCurtainMaskSeed(),
+                   webkitClipPath: () => getCurtainMaskSeed(),
+                   ease: "none",
+                   duration: 0.9
+                 }, "-=0.04");
+
+               return tl;
+             };
+
              // Curtain 1
-             const curtain1Tl = gsap.timeline({
-               scrollTrigger: {
-                 trigger: curtain1Ref.current,
-                 start: "top top",
-                 end: "+=150%",
-                 scrub: 0.45,
-                 pin: true,
-                 anticipatePin: 1,
-                 invalidateOnRefresh: true
-               }
-             });
-             const initialCurtainMask = getCurtainMaskSeed();
-             curtain1Tl.fromTo(
-               curtainMedia1Ref.current,
-               {
-                 clipPath: initialCurtainMask,
-                 webkitClipPath: initialCurtainMask
-               },
-               {
-                 clipPath: "ellipse(100vw 100vh at 50% 50%)",
-                 webkitClipPath: "ellipse(100vw 100vh at 50% 50%)",
-                 ease: "none"
-               }
-             )
-                       .to(curtainText1Ref.current, { opacity: 1, scale: 1.2, y: 0, duration: 0.5 }, "-=0.3")
-                       .to(curtainText1Ref.current, { opacity: 0, scale: 1.5, y: -100, duration: 0.5 }, "+=0.2");
+             setupCurtainReveal(curtain1Ref.current, curtainMedia1Ref.current, curtainText1Ref.current);
 
              // The Forge Timeline (ULTRA REDUCED TO 90%)
              const forgeTl = gsap.timeline({
@@ -298,13 +313,8 @@ export default function App() {
                       .to(el, { opacity: 0, pointerEvents: 'none', y: -50, filter: 'blur(5px)', duration: 1, delay: 0.1 });
              });
 
-             // Curtain 2 (RESTORED)
-             const curtain2Tl = gsap.timeline({
-               scrollTrigger: { trigger: curtain2Ref.current, start: "top top", end: "+=150%", scrub: true, pin: true }
-             });
-             curtain2Tl.to(curtainMedia2Ref.current, { width: "100vw", height: "100vh", borderRadius: "0px", ease: "none" })
-                       .to(curtainText2Ref.current, { opacity: 1, scale: 1.2, y: 0, duration: 0.5 }, "-=0.3")
-                       .to(curtainText2Ref.current, { opacity: 0, scale: 1.5, y: -100, duration: 0.5 }, "+=0.2");
+             // Curtain 2
+             setupCurtainReveal(curtain2Ref.current, curtainMedia2Ref.current, curtainText2Ref.current);
 
              // Horizontal Projects
              gsap.to(horizontalWrapperRef.current, {
@@ -498,7 +508,7 @@ export default function App() {
           <section className="curtain-section" ref={curtain2Ref}>
             <div className="curtain-sticky">
               <div className="curtain-media" ref={curtainMedia2Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/15616403_3840_2160_60fps.mp4" autoPlay loop muted playsInline preload="auto" />
+                <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
               </div>
               <h2 className="curtain-text" ref={curtainText2Ref}>
                 DIGITAL<br/>MASTERY.
@@ -534,7 +544,7 @@ export default function App() {
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <video src="/assets/videos/15616403_3840_2160_60fps.mp4" autoPlay loop muted playsInline preload="auto" />
+                    <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
                   </div>
                   <div className="project-info">
                     <h3>Motion<br/>Identity.</h3>
