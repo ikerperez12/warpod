@@ -1,16 +1,64 @@
-import React, { useEffect, useRef, useState, Suspense } from 'react';
+import React, { lazy, useEffect, useRef, useState, Suspense } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Canvas } from '@react-three/fiber';
 import { motion, AnimatePresence } from 'framer-motion';
 import Lenis from '@studio-freight/lenis';
-import Scene from './Scene';
-import KineticScene from './KineticScene';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const FRAMER_EASE_OUT = [0.22, 1, 0.36, 1];
 const FRAMER_EASE_OUT_STRONG = [0.16, 1, 0.3, 1];
+const BackgroundCanvas = lazy(() => import('./BackgroundCanvas'));
+const KineticCanvas = lazy(() => import('./KineticCanvas'));
+
+const getPerformanceProfile = () => {
+  if (typeof window === 'undefined') {
+    return {
+      isCoarsePointer: false,
+      shouldConserve: false,
+      enableCursor: true,
+      enableLenis: true,
+      allowHoverAudio: true,
+      allowAmbientAudio: true,
+      videoPreload: 'auto',
+      canvasDpr: [1, 2],
+      showBackgroundCanvas: true,
+      backgroundSceneQuality: 'full',
+      kineticSceneQuality: 'full',
+      kineticPosterOnly: false
+    };
+  }
+
+  const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const isCompactViewport = window.matchMedia('(max-width: 900px)').matches;
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const saveData = Boolean(connection?.saveData);
+  const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
+  const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 6;
+  const shouldConserve =
+    prefersReducedMotion ||
+    saveData ||
+    isCoarsePointer ||
+    isCompactViewport ||
+    lowMemory ||
+    lowCpu;
+
+  return {
+    isCoarsePointer,
+    shouldConserve,
+    enableCursor: !isCoarsePointer,
+    enableLenis: !isCoarsePointer && !prefersReducedMotion,
+    allowHoverAudio: !isCoarsePointer && !saveData,
+    allowAmbientAudio: !saveData,
+    videoPreload: shouldConserve ? 'metadata' : 'auto',
+    canvasDpr: shouldConserve ? [1, 1.2] : isCompactViewport ? [1, 1.5] : [1, 2],
+    showBackgroundCanvas: !(isCoarsePointer && shouldConserve),
+    backgroundSceneQuality: shouldConserve ? 'reduced' : 'full',
+    kineticSceneQuality: shouldConserve ? 'reduced' : 'full',
+    kineticPosterOnly: isCoarsePointer && shouldConserve
+  };
+};
 
 class CanvasBoundary extends React.Component {
   state = { hasError: false };
@@ -82,9 +130,10 @@ const SplitWords = ({ text }) => {
   );
 }
 
-const Magnetic = ({ children }) => {
+const Magnetic = ({ children, enabled = true }) => {
   const ref = useRef(null);
   useEffect(() => {
+    if (!enabled) return;
     const el = ref.current;
     if (!el) return;
     const xTo = gsap.quickTo(el, "x", {duration: 0.6, ease: "power3.out"});
@@ -107,7 +156,7 @@ const Magnetic = ({ children }) => {
       el.removeEventListener('mousemove', move);
       el.removeEventListener('mouseleave', leave);
     };
-  }, []);
+  }, [enabled]);
   return React.cloneElement(children, { ref });
 };
 
@@ -132,23 +181,71 @@ export default function App() {
   const storyImgRef = useRef();
 
   const deckSectionRef = useRef();
+  const kineticSectionRef = useRef();
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [perfProfile, setPerfProfile] = useState(() => getPerformanceProfile());
+  const [shouldMountKineticCanvas, setShouldMountKineticCanvas] = useState(false);
   const cursorRef = useRef(null);
   
   const ambientSound = useRef(null);
   const hoverSound = useRef(null);
 
+  const {
+    enableCursor,
+    enableLenis,
+    allowHoverAudio,
+    allowAmbientAudio,
+    videoPreload,
+    canvasDpr,
+    showBackgroundCanvas,
+    backgroundSceneQuality,
+    kineticSceneQuality,
+    kineticPosterOnly
+  } = perfProfile;
+
   useEffect(() => {
-    ambientSound.current = new Audio('/assets/audio/bg-ambient.mp3');
-    ambientSound.current.volume = 0.4;
-    ambientSound.current.loop = true;
-    hoverSound.current = new Audio('/assets/audio/hover.mp3');
-    hoverSound.current.volume = 0.05;
+    const updateProfile = () => setPerfProfile(getPerformanceProfile());
+    updateProfile();
+    window.addEventListener('resize', updateProfile, { passive: true });
+    window.addEventListener('orientationchange', updateProfile, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', updateProfile);
+      window.removeEventListener('orientationchange', updateProfile);
+    };
+  }, []);
+
+  useEffect(() => {
+    const target = kineticSectionRef.current;
+    if (!target || kineticPosterOnly) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldMountKineticCanvas(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '240px 0px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [kineticPosterOnly]);
+
+  useEffect(() => {
+    ambientSound.current = null;
+    hoverSound.current = null;
   }, []);
 
   const playHover = () => {
+    if (!allowHoverAudio) return;
+    if (!hoverSound.current) {
+      hoverSound.current = new Audio('/assets/audio/hover.mp3');
+      hoverSound.current.volume = 0.05;
+    }
     if (hoverSound.current) {
       hoverSound.current.currentTime = 0;
       hoverSound.current.play().catch(() => {});
@@ -156,47 +253,59 @@ export default function App() {
   };
 
   useEffect(() => {
-    const passiveListener = { passive: true };
     const playAmbient = () => {
+      if (!allowAmbientAudio) return;
+      if (!ambientSound.current) {
+        ambientSound.current = new Audio('/assets/audio/bg-ambient.mp3');
+        ambientSound.current.volume = 0.4;
+        ambientSound.current.loop = true;
+      }
       if (ambientSound.current && ambientSound.current.paused) {
         ambientSound.current.play().then(() => {
-          window.removeEventListener('click', playAmbient);
-          window.removeEventListener('scroll', playAmbient);
+          window.removeEventListener('pointerdown', playAmbient);
           window.removeEventListener('touchstart', playAmbient);
-          window.removeEventListener('mousemove', playAmbient);
         }).catch(() => {});
       }
     };
-    window.addEventListener('click', playAmbient);
-    window.addEventListener('scroll', playAmbient, passiveListener);
-    window.addEventListener('touchstart', playAmbient, passiveListener);
-    window.addEventListener('mousemove', playAmbient, passiveListener);
+
+    if (allowAmbientAudio) {
+      window.addEventListener('pointerdown', playAmbient, { passive: true });
+      window.addEventListener('touchstart', playAmbient, { passive: true });
+    }
+
     return () => {
-      window.removeEventListener('click', playAmbient);
-      window.removeEventListener('scroll', playAmbient);
+      window.removeEventListener('pointerdown', playAmbient);
       window.removeEventListener('touchstart', playAmbient);
-      window.removeEventListener('mousemove', playAmbient);
     };
-  }, []);
+  }, [allowAmbientAudio]);
 
   useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.5,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smooth: true,
-    });
-    lenis.on('scroll', ScrollTrigger.update);
-    const raf = (time) => lenis.raf(time * 1000);
-    gsap.ticker.add(raf);
-    gsap.ticker.lagSmoothing(0);
+    const lenis = enableLenis
+      ? new Lenis({
+          duration: 1.35,
+          easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+          smooth: true,
+        })
+      : null;
+    const raf = (time) => lenis?.raf(time * 1000);
+    lenis?.on('scroll', ScrollTrigger.update);
+    if (lenis) {
+      gsap.ticker.add(raf);
+      gsap.ticker.lagSmoothing(0);
+    }
 
-    const xTo = gsap.quickTo(cursorRef.current, "x", {duration: 0.15, ease: "power2.out"});
-    const yTo = gsap.quickTo(cursorRef.current, "y", {duration: 0.15, ease: "power2.out"});
-    const moveCursor = (e) => {
-      xTo(e.clientX);
-      yTo(e.clientY);
-    };
-    window.addEventListener('mousemove', moveCursor, { passive: true });
+    let moveCursor = null;
+    let xTo = null;
+    let yTo = null;
+    if (enableCursor && cursorRef.current) {
+      xTo = gsap.quickTo(cursorRef.current, "x", {duration: 0.15, ease: "power2.out"});
+      yTo = gsap.quickTo(cursorRef.current, "y", {duration: 0.15, ease: "power2.out"});
+      moveCursor = (e) => {
+        xTo(e.clientX);
+        yTo(e.clientY);
+      };
+      window.addEventListener('mousemove', moveCursor, { passive: true });
+    }
 
     let ctx;
     let p = 0;
@@ -382,16 +491,17 @@ export default function App() {
     }, 20);
     
     return () => {
-      window.removeEventListener('mousemove', moveCursor);
+      if (moveCursor) window.removeEventListener('mousemove', moveCursor);
       clearInterval(interval);
       refreshTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
-      lenis.destroy();
-      gsap.ticker.remove(raf);
+      lenis?.destroy();
+      if (lenis) gsap.ticker.remove(raf);
       if (ctx) ctx.revert();
     };
-  }, []);
+  }, [enableCursor, enableLenis]);
 
   const handleCursorHover = (type) => {
+    if (!enableCursor) return;
     if (cursorRef.current) {
       cursorRef.current.className = `custom-cursor ${type || ''}`;
       if (type) playHover();
@@ -400,7 +510,7 @@ export default function App() {
 
   return (
     <>
-      <div ref={cursorRef} className="custom-cursor"></div>
+      {enableCursor && <div ref={cursorRef} className="custom-cursor"></div>}
       
       <AnimatePresence>
         {loading && (
@@ -431,11 +541,15 @@ export default function App() {
       
       <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 2s ease', visibility: loading ? 'hidden' : 'visible' }}>
         <div className="canvas-container">
-          <CanvasBoundary>
-            <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 8], fov: 45 }} gl={{ powerPreference: "high-performance", antialias: true, alpha: false }}>
-              <Scene />
-            </Canvas>
-          </CanvasBoundary>
+          {showBackgroundCanvas ? (
+            <CanvasBoundary>
+              <Suspense fallback={null}>
+                <BackgroundCanvas dpr={canvasDpr} quality={backgroundSceneQuality} />
+              </Suspense>
+            </CanvasBoundary>
+          ) : (
+            <div className="canvas-fallback-orb" />
+          )}
         </div>
         
         <main className="content">
@@ -471,7 +585,7 @@ export default function App() {
           <section className="curtain-section" ref={curtain1Ref}>
             <div className="curtain-sticky">
               <div className="curtain-media" ref={curtainMedia1Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/creative-vision-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
+                <video src="/assets/videos/creative-vision-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
               </div>
               <h2 className="curtain-text" ref={curtainText1Ref}>
                 CREATIVE<br/>VISION.
@@ -493,7 +607,7 @@ export default function App() {
               {FORGE_STACK.map((item, i) => (
                 <div key={i} className="forge-item" ref={el => forgeItemsRef.current[i] = el}>
                   <div className="forge-icon">
-                    <img src={`/assets/icons/${item.icon}`} alt={item.name} style={{ width: '100%' }} />
+                    <img src={`/assets/icons/${item.icon}`} alt={item.name} loading="lazy" decoding="async" style={{ width: '100%' }} />
                   </div>
                   <div className="forge-text">
                     <h4>{item.name}</h4>
@@ -508,7 +622,7 @@ export default function App() {
           <section className="curtain-section" ref={curtain2Ref}>
             <div className="curtain-sticky">
               <div className="curtain-media" ref={curtainMedia2Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
+                <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
               </div>
               <h2 className="curtain-text" ref={curtainText2Ref}>
                 DIGITAL<br/>MASTERY.
@@ -522,7 +636,7 @@ export default function App() {
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_4.jpg" alt="P1" />
+                    <img src="/assets/images/premium_bg_4.jpg" alt="P1" loading="lazy" decoding="async" />
                   </div>
                   <div className="project-info">
                     <h3>Luxury<br/>Systems.</h3>
@@ -537,14 +651,14 @@ export default function App() {
                     <p>Redefining the digital shopping experience through seamless UX and immersive brand storytelling.</p>
                   </div>
                   <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_1.jpg" alt="P2" />
+                    <img src="/assets/images/premium_bg_1.jpg" alt="P2" loading="lazy" decoding="async" />
                   </div>
                 </div>
               </div>
               <div className="project-panel">
                 <div className="project-content">
                   <div className="project-image-box">
-                    <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload="auto" />
+                    <video src="/assets/videos/digital-mastery-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
                   </div>
                   <div className="project-info">
                     <h3>Motion<br/>Identity.</h3>
@@ -559,7 +673,7 @@ export default function App() {
                     <p>Scalable design systems that empower teams to build consistent and beautiful products at speed.</p>
                   </div>
                   <div className="project-image-box">
-                    <img src="/assets/images/bg1.jpg" alt="P4" />
+                    <img src="/assets/images/bg1.jpg" alt="P4" loading="lazy" decoding="async" />
                   </div>
                 </div>
               </div>
@@ -573,7 +687,7 @@ export default function App() {
             </div>
             <div className="story-layer" style={{ zIndex: 2 }}>
               <div className="story-floating-img" ref={storyImgRef}>
-                <img src="/assets/images/premium_bg_3.jpg" alt="Vision" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src="/assets/images/premium_bg_3.jpg" alt="Vision" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             </div>
             <div className="story-layer" style={{ zIndex: 3 }}>
@@ -585,13 +699,13 @@ export default function App() {
           <section className="deck-section" ref={deckSectionRef}>
              <div className="deck-container">
                <div className="deck-card" style={{ zIndex: 1 }}>
-                  <img src="/assets/images/premium_bg_1.jpg" alt="UI Case A" />
+                  <img src="/assets/images/premium_bg_1.jpg" alt="UI Case A" loading="lazy" decoding="async" />
                </div>
                <div className="deck-card" style={{ zIndex: 2 }}>
-                  <img src="/assets/images/premium_bg_2.jpg" alt="UI Case B" />
+                  <img src="/assets/images/premium_bg_2.jpg" alt="UI Case B" loading="lazy" decoding="async" />
                </div>
                <div className="deck-card" style={{ zIndex: 3 }}>
-                  <img src="/assets/images/bg1.jpg" alt="UI Case C" />
+                  <img src="/assets/images/bg1.jpg" alt="UI Case C" loading="lazy" decoding="async" />
                </div>
              </div>
           </section>
@@ -624,24 +738,30 @@ export default function App() {
           </section>
 
           {/* KINETIC CORE (REALLY 3D) - FINAL INTERACTIVE SECTION */}
-          <section className="kinetic-section" style={{ minHeight: '100vh', background: '#000', paddingBottom: '0' }}>
+          <section ref={kineticSectionRef} className="kinetic-section" style={{ minHeight: '100vh', background: '#000', paddingBottom: '0' }}>
             <div style={{ position: 'relative', top: '10vh', width: '100%', textAlign: 'center', zIndex: 10, pointerEvents: 'none' }}>
                <h2 style={{ fontSize: '8vw', fontWeight: 900, opacity: 0.3 }}>KINETIC CORE</h2>
             </div>
             <div className="local-canvas-wrapper" style={{ height: '80vh' }}>
-              <CanvasBoundary>
-                <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 10], fov: 45 }}>
-                  <Suspense fallback={null}>
-                    <KineticScene />
+              {kineticPosterOnly ? (
+                <div className="kinetic-poster">
+                  <img src="/assets/images/render_3d_1.jpg" alt="Kinetic poster" loading="lazy" decoding="async" />
+                </div>
+              ) : shouldMountKineticCanvas ? (
+                <CanvasBoundary>
+                  <Suspense fallback={<div className="kinetic-poster kinetic-poster--loading" />}>
+                    <KineticCanvas dpr={canvasDpr} quality={kineticSceneQuality} />
                   </Suspense>
-                </Canvas>
-              </CanvasBoundary>
+                </CanvasBoundary>
+              ) : (
+                <div className="kinetic-poster kinetic-poster--loading" />
+              )}
             </div>
           </section>
 
           {/* FOOTER */}
           <section className="section footer-section" style={{ padding: '5vw 10vw', textAlign: 'center', minHeight: '60vh', justifyContent: 'center', background: '#000', marginTop: '-2px' }}>
-            <Magnetic>
+            <Magnetic enabled={enableCursor}>
               <div className="footer-content magnetic" style={{ cursor: 'none' }}>
                 <h2 style={{ fontSize: '12vw', fontWeight: 900, marginBottom: '2rem', lineHeight: 0.75, letterSpacing: '-0.06em' }}>LET&apos;S<br/>BUILD.</h2>
                 <p style={{ opacity: 0.4, letterSpacing: '8px', textTransform: 'uppercase', fontSize: '1rem' }}>WARPOD STUDIO &copy; 2026.</p>

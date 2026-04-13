@@ -39,7 +39,7 @@ body {
   font-family: 'ClashDisplay', sans-serif;
   overflow-x: hidden;
   overscroll-behavior: none;
-  cursor: none; 
+  cursor: none;
 }
 
 /* Base Gradient Background */
@@ -102,6 +102,16 @@ body::before {
   height: 100vh;
   z-index: -1;
   pointer-events: none;
+}
+
+.canvas-fallback-orb {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(255, 0, 170, 0.22), transparent 16%),
+    radial-gradient(circle at 50% 36%, rgba(255, 0, 170, 0.08), transparent 26%),
+    radial-gradient(circle at 50% 60%, rgba(0, 210, 255, 0.06), transparent 36%);
+  transform: translateZ(0);
 }
 
 .content {
@@ -721,6 +731,36 @@ body::before {
   z-index: 5;
 }
 
+.kinetic-poster {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 0, 119, 0.22), transparent 32%),
+    radial-gradient(circle at 50% 65%, rgba(0, 210, 255, 0.14), transparent 38%),
+    #040404;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.kinetic-poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.88;
+}
+
+.kinetic-poster--loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.08), transparent 35%),
+    linear-gradient(135deg, rgba(255, 0, 119, 0.12), rgba(0, 210, 255, 0.08));
+}
+
 @media (max-width: 700px) {
   .curtain-media {
     clip-path: ellipse(clamp(75px, 26vw, 130px) clamp(75px, 12vh, 150px) at 50% 50%);
@@ -731,5 +771,148 @@ body::before {
     font-size: clamp(3.2rem, 21vw, 7rem);
     line-height: 0.84;
     letter-spacing: -0.06em;
+  }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  body {
+    cursor: auto;
+  }
+
+  .custom-cursor {
+    display: none;
+  }
+
+  .hero-subtitle {
+    font-size: clamp(0.95rem, 3.8vw, 1.2rem);
+    letter-spacing: 0.18em;
+    text-align: center;
+  }
+
+  .glass-card {
+    padding: 2.5rem 1.5rem;
+    border-radius: 32px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  }
+
+  .glass-card h2 {
+    font-size: clamp(3.2rem, 14vw, 5.2rem);
+  }
+
+  .glass-card h3 {
+    font-size: clamp(2rem, 8vw, 2.8rem);
+  }
+
+  .philosophy-text {
+    font-size: 1.05rem;
+    line-height: 1.35;
+  }
+
+  .marquee-container {
+    padding: 4rem 0;
+  }
+
+  .marquee-text {
+    font-size: 18vw;
+    padding: 0 2.2rem;
+  }
+
+  .scrub-section {
+    padding: 18vw 8vw;
+  }
+
+  .scrub-text {
+    font-size: 12vw;
+    line-height: 1.02;
+  }
+
+  .scrub-word {
+    margin-right: 0.6rem !important;
+  }
+
+  .forge-title {
+    top: 8vh;
+    font-size: 8vw;
+    letter-spacing: 6px;
+    text-align: center;
+    width: 100%;
+    padding: 0 1.5rem;
+  }
+
+  .forge-icon {
+    width: min(52vw, 220px);
+    margin-bottom: 2rem;
+  }
+
+  .forge-text h4 {
+    font-size: clamp(2.6rem, 11vw, 4rem);
+  }
+
+  .forge-text p {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .project-content {
+    flex-direction: column;
+    justify-content: center;
+    gap: 1.75rem;
+  }
+
+  .project-image-box,
+  .project-info {
+    width: 100%;
+  }
+
+  .project-info h3 {
+    font-size: clamp(2.8rem, 11vw, 4.2rem);
+    margin-bottom: 1rem;
+  }
+
+  .project-info p {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .story-bg-text {
+    font-size: 32vw;
+  }
+
+  .story-floating-img {
+    width: 82vw;
+    border-radius: 16px;
+  }
+
+  .deck-container {
+    width: 82vw;
+    height: 54vh;
+  }
+
+  .stats-section {
+    padding: 18vw 8vw;
+  }
+
+  .stats-grid {
+    gap: 1.5rem;
+  }
+
+  .rv {
+    padding: 2rem 1.5rem;
+    border-radius: 26px;
+  }
+
+  .rv-value {
+    font-size: clamp(2.4rem, 12vw, 4rem);
+  }
+
+  .rv-value.tiny {
+    font-size: clamp(1.2rem, 6vw, 2rem);
+  }
+
+  .local-canvas-wrapper {
+    height: 62vh;
+    padding: 0 1rem;
   }
 }

@@ -39,8 +39,9 @@ function Model({ url, position, scale, rotationSpeed, mouse }) {
   );
 }
 
-export default function KineticScene() {
+export default function KineticScene({ quality = 'full' }) {
   const mouse = useRef([0, 0]);
+  const isReduced = quality === 'reduced';
 
   useFrame((state) => {
     mouse.current = [state.mouse.x, state.mouse.y];
@@ -49,42 +50,50 @@ export default function KineticScene() {
   return (
     <>
       <color attach="background" args={['#000000']} />
-      <Environment files="/assets/models/env.hdr" background={false} resolution={256} />
-      <ambientLight intensity={0.5} />
-      <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={2} />
-      <pointLight position={[-10, -10, -10]} color="#ff0077" intensity={2} />
+      {!isReduced && <Environment files="/assets/models/env.hdr" background={false} resolution={256} />}
+      <ambientLight intensity={isReduced ? 0.8 : 0.5} />
+      <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={isReduced ? 1.25 : 2} />
+      <pointLight position={[-10, -10, -10]} color="#ff0077" intensity={isReduced ? 1 : 2} />
 
-      <Model 
-        url="/assets/models/helmet.glb" 
-        position={[0, 0, 0]} 
-        scale={2.5} 
-        rotationSpeed={0.1} 
-        mouse={mouse}
-      />
+      <Float speed={isReduced ? 1.4 : 2.1} rotationIntensity={isReduced ? 0.35 : 0.65} floatIntensity={isReduced ? 0.5 : 0.85}>
+        <Model
+          url="/assets/models/helmet.glb"
+          position={[0, 0, 0]}
+          scale={isReduced ? 2.1 : 2.5}
+          rotationSpeed={0.1}
+          mouse={mouse}
+        />
+      </Float>
       
-      <Model 
-        url="/assets/models/head.glb" 
-        position={[-5, 2, -2]} 
-        scale={0.6} 
-        rotationSpeed={-0.2} 
-        mouse={mouse}
-      />
+      {!isReduced && (
+        <>
+          <Model
+            url="/assets/models/head.glb"
+            position={[-5, 2, -2]}
+            scale={0.6}
+            rotationSpeed={-0.2}
+            mouse={mouse}
+          />
 
-      <Model 
-        url="/assets/models/box.glb" 
-        position={[5, -2, -1]} 
-        scale={1.8} 
-        rotationSpeed={0.4} 
-        mouse={mouse}
-      />
+          <Model
+            url="/assets/models/box.glb"
+            position={[5, -2, -1]}
+            scale={1.8}
+            rotationSpeed={0.4}
+            mouse={mouse}
+          />
+        </>
+      )}
 
-      <ContactShadows 
-        position={[0, -5, 0]} 
-        opacity={0.5} 
-        scale={30} 
-        blur={2.5} 
-        far={6} 
-      />
+      {!isReduced && (
+        <ContactShadows
+          position={[0, -5, 0]}
+          opacity={0.5}
+          scale={30}
+          blur={2.5}
+          far={6}
+        />
+      )}
     </>
   );
 }
