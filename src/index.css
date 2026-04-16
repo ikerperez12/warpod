@@ -114,6 +114,33 @@ body::before {
   transform: translateZ(0);
 }
 
+.canvas-fallback-orb--strong {
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 0, 170, 0.34), transparent 18%),
+    radial-gradient(circle at 48% 40%, rgba(255, 120, 220, 0.16), transparent 30%),
+    radial-gradient(circle at 52% 62%, rgba(0, 210, 255, 0.14), transparent 42%),
+    radial-gradient(circle at 50% 50%, rgba(10, 10, 34, 0.9) 0%, rgba(2, 2, 8, 1) 72%);
+}
+
+.canvas-fallback-orb--loading {
+  animation: orb-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes orb-pulse {
+  0% {
+    opacity: 0.72;
+    filter: saturate(0.95);
+  }
+  50% {
+    opacity: 1;
+    filter: saturate(1.1);
+  }
+  100% {
+    opacity: 0.72;
+    filter: saturate(0.95);
+  }
+}
+
 .content {
   position: relative;
   z-index: 10;

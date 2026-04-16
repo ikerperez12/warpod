@@ -53,7 +53,7 @@ const getPerformanceProfile = () => {
     allowAmbientAudio: !saveData,
     videoPreload: shouldConserve ? 'metadata' : 'auto',
     canvasDpr: shouldConserve ? [1, 1.2] : isCompactViewport ? [1, 1.5] : [1, 2],
-    showBackgroundCanvas: !(isCoarsePointer && shouldConserve),
+    showBackgroundCanvas: !saveData && !prefersReducedMotion,
     backgroundSceneQuality: shouldConserve ? 'reduced' : 'full',
     kineticSceneQuality: shouldConserve ? 'reduced' : 'full',
     kineticPosterOnly: isCoarsePointer && shouldConserve
@@ -72,7 +72,11 @@ class CanvasBoundary extends React.Component {
   }
 
   render() {
-    return this.state.hasError ? null : this.props.children;
+    if (this.state.hasError) {
+      return this.props.fallback ?? null;
+    }
+
+    return this.props.children;
   }
 }
 
@@ -639,13 +643,13 @@ export default function App() {
       <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 2s ease', visibility: loading ? 'hidden' : 'visible' }}>
         <div className="canvas-container">
           {showBackgroundCanvas ? (
-            <CanvasBoundary>
-              <Suspense fallback={null}>
+            <CanvasBoundary fallback={<div className="canvas-fallback-orb canvas-fallback-orb--strong" />}>
+              <Suspense fallback={<div className="canvas-fallback-orb canvas-fallback-orb--loading" />}>
                 <BackgroundCanvas dpr={canvasDpr} quality={backgroundSceneQuality} />
               </Suspense>
             </CanvasBoundary>
           ) : (
-            <div className="canvas-fallback-orb" />
+            <div className="canvas-fallback-orb canvas-fallback-orb--strong" />
           )}
         </div>
         
