@@ -1,51 +1,98 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sphere, MeshDistortMaterial, Float, Environment } from '@react-three/drei';
+import { Environment, Float, Sphere, Stars } from '@react-three/drei';
+import { Bloom, ChromaticAberration, EffectComposer } from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 
-/**
- * ESCENA RECUPERADA: Versión 1 (Bola Roja Deforme)
- * Fondo negro absoluto y material ff00aa.
- */
-export default function Scene({ quality = 'full' }) {
-  const sphereRef = useRef();
-  const isReduced = quality === 'reduced';
+function Bubble({ position, size, speed, color }) {
+  const ref = useRef();
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
-    if (sphereRef.current) {
-      sphereRef.current.rotation.x = Math.sin(t / 4) * 0.3;
-      sphereRef.current.rotation.y = t * 0.2;
-      sphereRef.current.position.y = Math.sin(t / 2) * 0.2;
+
+    if (!ref.current) return;
+
+    ref.current.position.y += Math.sin(t * speed) * 0.002;
+    ref.current.position.x += Math.cos(t * speed) * 0.001;
+  });
+
+  return (
+    <Float speed={speed * 2} rotationIntensity={0.5} floatIntensity={0.5}>
+      <Sphere ref={ref} args={[size, 32, 32]} position={position}>
+        <meshPhysicalMaterial
+          color={color}
+          roughness={0}
+          metalness={0.1}
+          transmission={1}
+          thickness={1}
+          ior={1.45}
+          envMapIntensity={2}
+          clearcoat={1}
+          transparent
+          opacity={0.6}
+        />
+      </Sphere>
+    </Float>
+  );
+}
+
+export default function Scene({ quality = 'full' }) {
+  const groupRef = useRef();
+  const isReduced = quality === 'reduced';
+  const bubbleCount = isReduced ? 10 : 20;
+
+  const bubbles = useMemo(
+    () =>
+      Array.from({ length: bubbleCount }).map((_, i) => ({
+        position: [(Math.random() - 0.5) * 15, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10],
+        size: Math.random() * 0.5 + 0.2,
+        speed: Math.random() * 0.5 + 0.2,
+        color: i % 2 === 0 ? '#ffffff' : '#ff00aa'
+      })),
+    [bubbleCount]
+  );
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+
+    if (groupRef.current) {
+      groupRef.current.rotation.y = t * 0.05;
     }
+
+    state.camera.position.x = Math.sin(t / 10) * 0.5;
+    state.camera.position.y = Math.cos(t / 10) * 0.5;
+    state.camera.lookAt(0, 0, 0);
   });
 
   return (
     <>
-      <color attach="background" args={['#000000']} />
-      {!isReduced && <Environment preset="city" />}
-      
-      <ambientLight intensity={isReduced ? 0.75 : 0.5} />
+      <color attach="background" args={['#020205']} />
+      <Environment files="/assets/models/env.hdr" background={false} resolution={isReduced ? 128 : 256} />
+
+      <ambientLight intensity={isReduced ? 0.45 : 0.4} />
       <spotLight
         position={[10, 10, 10]}
         angle={0.15}
         penumbra={1}
-        intensity={isReduced ? 1.2 : 2}
+        intensity={isReduced ? 1.4 : 2}
         color="#ff00aa"
         castShadow={!isReduced}
       />
-      <pointLight position={[-10, -10, -10]} intensity={isReduced ? 0.6 : 1} color="#00ffff" />
+      <pointLight position={[-10, -10, -10]} intensity={isReduced ? 0.8 : 1} color="#00ffff" />
 
-      <Float speed={isReduced ? 2.8 : 4} rotationIntensity={1} floatIntensity={isReduced ? 1.25 : 2}>
-        <Sphere ref={sphereRef} args={[1.5, isReduced ? 32 : 64, isReduced ? 32 : 64]} position={[0, 0, 0]}>
-          <MeshDistortMaterial
-            color="#ff00aa"
-            speed={isReduced ? 2 : 3}
-            distort={isReduced ? 0.35 : 0.6}
-            roughness={0}
-            metalness={1}
-          />
-        </Sphere>
-      </Float>
+      <group ref={groupRef}>
+        <Stars radius={100} depth={50} count={isReduced ? 900 : 2000} factor={4} saturation={0} fade speed={0.5} />
+        {bubbles.map((props, i) => (
+          <Bubble key={i} {...props} />
+        ))}
+      </group>
+
+      {!isReduced && (
+        <EffectComposer multisampling={0} disableNormalPass>
+          <Bloom luminanceThreshold={0.2} luminanceSmoothing={0.9} height={300} intensity={1} />
+          <ChromaticAberration blendFunction={BlendFunction.NORMAL} offset={[0.001, 0.001]} />
+        </EffectComposer>
+      )}
     </>
   );
 }

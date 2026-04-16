@@ -50,7 +50,7 @@ const getPerformanceProfile = () => {
     enableCursor: !isCoarsePointer,
     enableLenis: !isCoarsePointer && !prefersReducedMotion,
     allowHoverAudio: !isCoarsePointer && !saveData,
-    allowAmbientAudio: !saveData,
+    allowAmbientAudio: true,
     videoPreload: shouldConserve ? 'metadata' : 'auto',
     canvasDpr: shouldConserve ? [1, 1.2] : isCompactViewport ? [1, 1.5] : [1, 2],
     showBackgroundCanvas: !saveData && !prefersReducedMotion,
@@ -325,6 +325,9 @@ export default function App() {
         ambientSound.current.play().then(() => {
           window.removeEventListener('pointerdown', playAmbient);
           window.removeEventListener('touchstart', playAmbient);
+          window.removeEventListener('keydown', playAmbient);
+          window.removeEventListener('wheel', playAmbient);
+          window.removeEventListener('mousedown', playAmbient);
         }).catch(() => {});
       }
     };
@@ -332,11 +335,17 @@ export default function App() {
     if (allowAmbientAudio) {
       window.addEventListener('pointerdown', playAmbient, { passive: true });
       window.addEventListener('touchstart', playAmbient, { passive: true });
+      window.addEventListener('keydown', playAmbient, { passive: true });
+      window.addEventListener('wheel', playAmbient, { passive: true });
+      window.addEventListener('mousedown', playAmbient, { passive: true });
     }
 
     return () => {
       window.removeEventListener('pointerdown', playAmbient);
       window.removeEventListener('touchstart', playAmbient);
+      window.removeEventListener('keydown', playAmbient);
+      window.removeEventListener('wheel', playAmbient);
+      window.removeEventListener('mousedown', playAmbient);
     };
   }, [allowAmbientAudio]);
 
