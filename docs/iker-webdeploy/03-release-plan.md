@@ -7,7 +7,7 @@
 - Branch: `main`.
 - Preview URL: No encontrado.
 - Production URL: `https://warpod.vercel.app`.
-- Latest production deployment: `https://warpod-fmbv5rz9y-ikerperez12s-projects.vercel.app`.
+- Latest production deployment: deployment-specific URL changes on each push; verify current value with `npx vercel ls`.
 - Domain: `warpod.vercel.app`.
 
 ## Preflight

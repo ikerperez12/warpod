@@ -21,7 +21,7 @@ Warpod Studio is finalized as a production-ready Vite/React cinematic portfolio 
 - Local: run with `npm run dev` or `npm run preview` after `npm run build`.
 - Preview: No encontrado.
 - Production: `https://warpod.vercel.app`.
-- Latest Vercel production deployment: `https://warpod-fmbv5rz9y-ikerperez12s-projects.vercel.app`.
+- Latest Vercel production deployment: deployment-specific URL changes on each push; verify current value with `npx vercel ls`.
 
 ## QA
 

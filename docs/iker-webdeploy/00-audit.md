@@ -14,7 +14,7 @@ Audit date: 2026-05-11
 | Git remote | `https://github.com/ikerperez12/warpod.git` | Verified |
 | Deploy provider | Vercel | Verified with `npx vercel ls` |
 | Live URL | `https://warpod.vercel.app` | Verified HTTP 200 |
-| Latest deployment | `https://warpod-fmbv5rz9y-ikerperez12s-projects.vercel.app` | Verified Ready, Production |
+| Latest deployment | Vercel deployment-specific URL changes on each push | Verify current value with `npx vercel ls` |
 | Preview URL | No encontrado | No preview deployment was required for this final production closeout |
 
 ## Files Reviewed
