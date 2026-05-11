@@ -1,7 +1,7 @@
-import React, { lazy, useEffect, useRef, useState, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useReducer, useRef, useSyncExternalStore } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion';
 import Lenis from '@studio-freight/lenis';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -12,22 +12,39 @@ const FRAMER_EASE_OUT_STRONG = [0.16, 1, 0.3, 1];
 const BackgroundCanvas = lazy(() => import('./BackgroundCanvas'));
 const KineticCanvas = lazy(() => import('./KineticCanvas'));
 
+const INITIAL_PERFORMANCE_PROFILE = {
+  isCoarsePointer: false,
+  shouldConserve: false,
+  enableCursor: true,
+  enableLenis: true,
+  allowHoverAudio: true,
+  allowAmbientAudio: true,
+  videoPreload: 'auto',
+  canvasDpr: [1, 2],
+  showBackgroundCanvas: true,
+  backgroundSceneQuality: 'full',
+  kineticSceneQuality: 'full',
+  kineticPosterOnly: false
+};
+
+const arePerformanceProfilesEqual = (left, right) =>
+  left.isCoarsePointer === right.isCoarsePointer &&
+  left.shouldConserve === right.shouldConserve &&
+  left.enableCursor === right.enableCursor &&
+  left.enableLenis === right.enableLenis &&
+  left.allowHoverAudio === right.allowHoverAudio &&
+  left.allowAmbientAudio === right.allowAmbientAudio &&
+  left.videoPreload === right.videoPreload &&
+  left.canvasDpr[0] === right.canvasDpr[0] &&
+  left.canvasDpr[1] === right.canvasDpr[1] &&
+  left.showBackgroundCanvas === right.showBackgroundCanvas &&
+  left.backgroundSceneQuality === right.backgroundSceneQuality &&
+  left.kineticSceneQuality === right.kineticSceneQuality &&
+  left.kineticPosterOnly === right.kineticPosterOnly;
+
 const getPerformanceProfile = () => {
   if (typeof window === 'undefined') {
-    return {
-      isCoarsePointer: false,
-      shouldConserve: false,
-      enableCursor: true,
-      enableLenis: true,
-      allowHoverAudio: true,
-      allowAmbientAudio: true,
-      videoPreload: 'auto',
-      canvasDpr: [1, 2],
-      showBackgroundCanvas: true,
-      backgroundSceneQuality: 'full',
-      kineticSceneQuality: 'full',
-      kineticPosterOnly: false
-    };
+    return INITIAL_PERFORMANCE_PROFILE;
   }
 
   const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
@@ -59,6 +76,59 @@ const getPerformanceProfile = () => {
     kineticSceneQuality: shouldConserve ? 'reduced' : 'full',
     kineticPosterOnly: isCoarsePointer && shouldConserve
   };
+};
+
+let performanceProfileSnapshot = INITIAL_PERFORMANCE_PROFILE;
+
+const getPerformanceProfileSnapshot = () => {
+  const nextSnapshot = getPerformanceProfile();
+
+  if (!arePerformanceProfilesEqual(performanceProfileSnapshot, nextSnapshot)) {
+    performanceProfileSnapshot = nextSnapshot;
+  }
+
+  return performanceProfileSnapshot;
+};
+
+const subscribePerformanceProfile = (callback) => {
+  if (typeof window === 'undefined') return () => {};
+
+  window.addEventListener('resize', callback, { passive: true });
+  window.addEventListener('orientationchange', callback, { passive: true });
+
+  return () => {
+    window.removeEventListener('resize', callback);
+    window.removeEventListener('orientationchange', callback);
+  };
+};
+
+const createInitialUiState = () => {
+  const initialProfile = getPerformanceProfileSnapshot();
+
+  return {
+    loading: true,
+    progress: 0,
+    shouldMountKineticCanvas: false,
+    shouldLoadForgeMedia: !initialProfile.shouldConserve,
+    shouldLoadDigitalMasteryVideo: !initialProfile.shouldConserve
+  };
+};
+
+const uiReducer = (state, action) => {
+  switch (action.type) {
+    case 'set-loading':
+      return { ...state, loading: action.value };
+    case 'set-progress':
+      return { ...state, progress: action.value };
+    case 'mount-kinetic-canvas':
+      return state.shouldMountKineticCanvas ? state : { ...state, shouldMountKineticCanvas: true };
+    case 'load-forge-media':
+      return state.shouldLoadForgeMedia ? state : { ...state, shouldLoadForgeMedia: true };
+    case 'load-digital-mastery-video':
+      return state.shouldLoadDigitalMasteryVideo ? state : { ...state, shouldLoadDigitalMasteryVideo: true };
+    default:
+      return state;
+  }
 };
 
 class CanvasBoundary extends React.Component {
@@ -105,10 +175,15 @@ const FORGE_STACK = [
 ];
 
 const SplitText = ({ children }) => {
+  const characters = children.split('').map((char, index) => ({
+    char,
+    id: `${children}-char-${index}-${char.charCodeAt(0)}`
+  }));
+
   return (
     <span aria-label={children} style={{ display: 'inline-block' }}>
-      {children.split('').map((char, i) => (
-        <span aria-hidden="true" key={i} className="char" style={{ display: 'inline-block', opacity: 0 }}>
+      {characters.map(({ char, id }) => (
+        <span aria-hidden="true" key={id} className="char" style={{ display: 'inline-block', opacity: 0 }}>
           {char === ' ' ? '\u00A0' : char}
         </span>
       ))}
@@ -117,16 +192,21 @@ const SplitText = ({ children }) => {
 };
 
 const SplitWords = ({ text }) => {
-  const words = text.split(' ');
+  const words = text.split(' ').map((word, index) => ({
+    word,
+    id: `${word}-${index}`,
+    animationDelay: `${index * 0.1}s`
+  }));
+
   return (
     <>
-      {words.map((word, i) => (
-        <span key={i} className="scrub-word" style={{ 
+      {words.map(({ word, id, animationDelay }) => (
+        <span key={id} className="scrub-word" style={{
           display: 'inline-block', 
           marginRight: '1.5rem', 
           opacity: 0, 
           transform: 'translateZ(-100px)',
-          animationDelay: `${i * 0.1}s` 
+          animationDelay
         }}>
           {word}
         </span>
@@ -165,70 +245,16 @@ const Magnetic = ({ children, enabled = true }) => {
   return React.cloneElement(children, { ref });
 };
 
-export default function App() {
-  const containerRef = useRef();
-  const curtain1Ref = useRef();
-  const curtainMedia1Ref = useRef();
-  const curtainText1Ref = useRef();
-  
-  const curtain2Ref = useRef();
-  const curtainMedia2Ref = useRef();
-  const curtainText2Ref = useRef();
-
-  const forgeSectionRef = useRef();
-  const forgeItemsRef = useRef([]);
-  
-  const horizontalSectionRef = useRef();
-  const horizontalWrapperRef = useRef();
-  
-  const storySectionRef = useRef();
-  const storyTextRef = useRef();
-  const storyImgRef = useRef();
-
-  const deckSectionRef = useRef();
-  const kineticSectionRef = useRef();
-
-  const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [perfProfile, setPerfProfile] = useState(() => getPerformanceProfile());
-  const [shouldMountKineticCanvas, setShouldMountKineticCanvas] = useState(false);
-  const [shouldLoadForgeMedia, setShouldLoadForgeMedia] = useState(
-    () => !getPerformanceProfile().shouldConserve
-  );
-  const [shouldLoadDigitalMasteryVideo, setShouldLoadDigitalMasteryVideo] = useState(
-    () => !getPerformanceProfile().shouldConserve
-  );
-  const cursorRef = useRef(null);
-  
-  const ambientSound = useRef(null);
-  const hoverSound = useRef(null);
-
-  const {
-    shouldConserve,
-    enableCursor,
-    enableLenis,
-    allowHoverAudio,
-    allowAmbientAudio,
-    videoPreload,
-    canvasDpr,
-    showBackgroundCanvas,
-    backgroundSceneQuality,
-    kineticSceneQuality,
-    kineticPosterOnly
-  } = perfProfile;
-
-  useEffect(() => {
-    const updateProfile = () => setPerfProfile(getPerformanceProfile());
-    updateProfile();
-    window.addEventListener('resize', updateProfile, { passive: true });
-    window.addEventListener('orientationchange', updateProfile, { passive: true });
-
-    return () => {
-      window.removeEventListener('resize', updateProfile);
-      window.removeEventListener('orientationchange', updateProfile);
-    };
-  }, []);
-
+const useDeferredMediaLoading = ({
+  kineticSectionRef,
+  forgeSectionRef,
+  curtain2Ref,
+  kineticPosterOnly,
+  shouldConserve,
+  shouldLoadForgeMedia,
+  shouldLoadDigitalMasteryVideo,
+  dispatchUi
+}) => {
   useEffect(() => {
     const target = kineticSectionRef.current;
     if (!target || kineticPosterOnly) return;
@@ -236,7 +262,7 @@ export default function App() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldMountKineticCanvas(true);
+          dispatchUi({ type: 'mount-kinetic-canvas' });
           observer.disconnect();
         }
       },
@@ -245,11 +271,11 @@ export default function App() {
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [kineticPosterOnly]);
+  }, [kineticPosterOnly, kineticSectionRef, dispatchUi]);
 
   useEffect(() => {
-    if (!perfProfile.shouldConserve) {
-      setShouldLoadForgeMedia(true);
+    if (!shouldConserve) {
+      dispatchUi({ type: 'load-forge-media' });
       return;
     }
 
@@ -261,7 +287,7 @@ export default function App() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoadForgeMedia(true);
+          dispatchUi({ type: 'load-forge-media' });
           observer.disconnect();
         }
       },
@@ -270,11 +296,11 @@ export default function App() {
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [perfProfile.shouldConserve, shouldLoadForgeMedia]);
+  }, [shouldConserve, shouldLoadForgeMedia, forgeSectionRef, dispatchUi]);
 
   useEffect(() => {
-    if (!perfProfile.shouldConserve) {
-      setShouldLoadDigitalMasteryVideo(true);
+    if (!shouldConserve) {
+      dispatchUi({ type: 'load-digital-mastery-video' });
       return;
     }
 
@@ -286,7 +312,7 @@ export default function App() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoadDigitalMasteryVideo(true);
+          dispatchUi({ type: 'load-digital-mastery-video' });
           observer.disconnect();
         }
       },
@@ -295,24 +321,17 @@ export default function App() {
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [perfProfile.shouldConserve, shouldLoadDigitalMasteryVideo]);
+  }, [shouldConserve, shouldLoadDigitalMasteryVideo, curtain2Ref, dispatchUi]);
+};
+
+const usePointerAudio = ({ allowHoverAudio, allowAmbientAudio }) => {
+  const ambientSound = useRef(null);
+  const hoverSound = useRef(null);
 
   useEffect(() => {
     ambientSound.current = null;
     hoverSound.current = null;
   }, []);
-
-  const playHover = () => {
-    if (!allowHoverAudio) return;
-    if (!hoverSound.current) {
-      hoverSound.current = new Audio('/assets/audio/hover.mp3');
-      hoverSound.current.volume = 0.05;
-    }
-    if (hoverSound.current) {
-      hoverSound.current.currentTime = 0;
-      hoverSound.current.play().catch(() => {});
-    }
-  };
 
   useEffect(() => {
     const playAmbient = () => {
@@ -350,6 +369,41 @@ export default function App() {
     };
   }, [allowAmbientAudio]);
 
+  return () => {
+    if (!allowHoverAudio) return;
+    if (!hoverSound.current) {
+      hoverSound.current = new Audio('/assets/audio/hover.mp3');
+      hoverSound.current.volume = 0.05;
+    }
+    if (hoverSound.current) {
+      hoverSound.current.currentTime = 0;
+      hoverSound.current.play().catch(() => {});
+    }
+  };
+};
+
+const usePageOrchestration = ({
+  containerRef,
+  cursorRef,
+  curtain1Ref,
+  curtainMedia1Ref,
+  curtainText1Ref,
+  curtain2Ref,
+  curtainMedia2Ref,
+  curtainText2Ref,
+  forgeSectionRef,
+  forgeItemsRef,
+  horizontalSectionRef,
+  horizontalWrapperRef,
+  storySectionRef,
+  storyTextRef,
+  storyImgRef,
+  deckSectionRef,
+  enableCursor,
+  enableLenis,
+  shouldConserve,
+  dispatchUi
+}) => {
   useEffect(() => {
     const lenis = enableLenis
       ? new Lenis({
@@ -366,11 +420,9 @@ export default function App() {
     }
 
     let moveCursor = null;
-    let xTo = null;
-    let yTo = null;
     if (enableCursor && cursorRef.current) {
-      xTo = gsap.quickTo(cursorRef.current, "x", {duration: 0.15, ease: "power2.out"});
-      yTo = gsap.quickTo(cursorRef.current, "y", {duration: 0.15, ease: "power2.out"});
+      const xTo = gsap.quickTo(cursorRef.current, "x", {duration: 0.15, ease: "power2.out"});
+      const yTo = gsap.quickTo(cursorRef.current, "y", {duration: 0.15, ease: "power2.out"});
       moveCursor = (e) => {
         xTo(e.clientX);
         yTo(e.clientY);
@@ -381,6 +433,7 @@ export default function App() {
     let ctx;
     const deferredContexts = [];
     const deferredHandles = [];
+    const refreshTimeouts = [];
 
     const scheduleDeferredSection = (callback, timeout = 600) => {
       const run = () => {
@@ -454,140 +507,135 @@ export default function App() {
     };
 
     let p = 0;
-    const refreshTimeouts = [];
     const interval = setInterval(() => {
       p += shouldConserve ? 5 : 2;
-      setProgress(p);
+      dispatchUi({ type: 'set-progress', value: p });
       if (p >= 100) {
         clearInterval(interval);
         setTimeout(() => {
-           setLoading(false);
-           ctx = gsap.context(() => {
-             // Hero Title
-             gsap.to('.hero-title .char', {
-               y: 0, opacity: 1, stagger: 0.05, duration: 1.5, ease: "expo.out", delay: 0.2, force3D: true
-             });
+          dispatchUi({ type: 'set-loading', value: false });
+          ctx = gsap.context(() => {
+            gsap.to('.hero-title .char', {
+              y: 0, opacity: 1, stagger: 0.05, duration: 1.5, ease: "expo.out", delay: 0.2, force3D: true
+            });
 
-             // Marquee
-             gsap.to('.marquee-content', {
-               xPercent: -50, ease: "none", duration: 25, repeat: -1, force3D: true
-             });
+            gsap.to('.marquee-content', {
+              xPercent: -50, ease: "none", duration: 25, repeat: -1, force3D: true
+            });
 
-             // Scrub Section (STAR WARS PROGRESSIVE EFFECT)
-             const scrubWords = gsap.utils.toArray('.scrub-word');
-             gsap.fromTo(scrubWords,
-               { opacity: 0, y: 100, scale: 0.5, filter: 'blur(10px)' },
-               {
-                 opacity: 1,
-                 y: 0,
-                 scale: 1,
-                 filter: 'blur(0px)',
-                 stagger: 0.08,
-                 scrollTrigger: {
-                   trigger: ".scrub-section",
-                   start: "top 78%",
-                   end: "bottom center",
-                   scrub: 1.2
-                 }
-               }
-             );
+            const scrubWords = gsap.utils.toArray('.scrub-word');
+            gsap.fromTo(scrubWords,
+              { opacity: 0, y: 100, scale: 0.5, filter: 'blur(10px)' },
+              {
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                filter: 'blur(0px)',
+                stagger: 0.08,
+                scrollTrigger: {
+                  trigger: ".scrub-section",
+                  start: "top 78%",
+                  end: "bottom center",
+                  scrub: 1.2
+                }
+              }
+            );
 
-             // Curtain 1
-             setupCurtainReveal(curtain1Ref.current, curtainMedia1Ref.current, curtainText1Ref.current);
+            setupCurtainReveal(curtain1Ref.current, curtainMedia1Ref.current, curtainText1Ref.current);
 
-             requestAnimationFrame(() => ScrollTrigger.refresh());
-             refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 450));
-           }, containerRef);
+            requestAnimationFrame(() => ScrollTrigger.refresh());
+            refreshTimeouts.push(window.setTimeout(() => ScrollTrigger.refresh(), 450));
+          }, containerRef);
 
-           scheduleDeferredSection(() => {
-             const forgeTl = gsap.timeline({
-               scrollTrigger: {
-                 trigger: forgeSectionRef.current,
-                 start: "top top",
-                 end: "+=90%",
-                 scrub: true,
-                 pin: true
-               }
-             });
+          scheduleDeferredSection(() => {
+            const forgeTl = gsap.timeline({
+              scrollTrigger: {
+                trigger: forgeSectionRef.current,
+                start: "top top",
+                end: "+=90%",
+                scrub: true,
+                pin: true
+              }
+            });
 
-             FORGE_STACK.forEach((item, i) => {
-               const el = forgeItemsRef.current[i];
-               if (!el) return;
+            FORGE_STACK.forEach((item, i) => {
+              const el = forgeItemsRef.current[i];
+              if (!el) return;
 
-               const icon = el.querySelector('.forge-icon');
-               const text = el.querySelector('.forge-text');
+              const icon = el.querySelector('.forge-icon');
+              const text = el.querySelector('.forge-text');
 
-               forgeTl.to(el, { opacity: 1, pointerEvents: 'auto', duration: 1 })
-                 .from(icon, { z: -800, rotateY: 45, filter: 'blur(15px)', duration: 1 }, "-=1")
-                 .from(text, { y: 50, opacity: 0, duration: 1 }, "-=0.5")
-                 .to(el, { opacity: 0, pointerEvents: 'none', y: -50, filter: 'blur(5px)', duration: 1, delay: 0.1 });
-             });
-           }, 500);
+              forgeTl.to(el, { opacity: 1, pointerEvents: 'auto', duration: 1 })
+                .from(icon, { z: -800, rotateY: 45, filter: 'blur(15px)', duration: 1 }, "-=1")
+                .from(text, { y: 50, opacity: 0, duration: 1 }, "-=0.5")
+                .to(el, { opacity: 0, pointerEvents: 'none', y: -50, filter: 'blur(5px)', duration: 1, delay: 0.1 });
+            });
+          }, 500);
 
-           scheduleDeferredSection(() => {
-             setupCurtainReveal(curtain2Ref.current, curtainMedia2Ref.current, curtainText2Ref.current);
+          scheduleDeferredSection(() => {
+            setupCurtainReveal(curtain2Ref.current, curtainMedia2Ref.current, curtainText2Ref.current);
 
-             gsap.to(horizontalWrapperRef.current, {
-               x: () => -(horizontalWrapperRef.current.scrollWidth - window.innerWidth),
-               ease: "none",
-               scrollTrigger: {
-                 trigger: horizontalSectionRef.current,
-                 start: "top top",
-                 end: () => `+=${horizontalWrapperRef.current.scrollWidth}`,
-                 scrub: 1,
-                 pin: true,
-                 invalidateOnRefresh: true
-               }
-             });
-           }, 850);
+            gsap.to(horizontalWrapperRef.current, {
+              x: () => -(horizontalWrapperRef.current.scrollWidth - window.innerWidth),
+              ease: "none",
+              scrollTrigger: {
+                trigger: horizontalSectionRef.current,
+                start: "top top",
+                end: () => `+=${horizontalWrapperRef.current.scrollWidth}`,
+                scrub: 1,
+                pin: true,
+                invalidateOnRefresh: true
+              }
+            });
+          }, 850);
 
-           scheduleDeferredSection(() => {
-             const storyTl = gsap.timeline({
-               scrollTrigger: { trigger: storySectionRef.current, start: "top top", end: "bottom top", scrub: true }
-             });
+          scheduleDeferredSection(() => {
+            const storyTl = gsap.timeline({
+              scrollTrigger: { trigger: storySectionRef.current, start: "top top", end: "bottom top", scrub: true }
+            });
 
-             storyTl.to(storyTextRef.current, { xPercent: -20, ease: "none" }, 0)
-               .from(storyImgRef.current, { scale: 1.4, yPercent: 20, ease: "none" }, 0);
+            storyTl.to(storyTextRef.current, { xPercent: -20, ease: "none" }, 0)
+              .from(storyImgRef.current, { scale: 1.4, yPercent: 20, ease: "none" }, 0);
 
-             const deckTl = gsap.timeline({
-               scrollTrigger: {
-                 trigger: deckSectionRef.current,
-                 start: "top top",
-                 end: "+=150%",
-                 pin: true,
-                 scrub: true
-               }
-             });
+            const deckTl = gsap.timeline({
+              scrollTrigger: {
+                trigger: deckSectionRef.current,
+                start: "top top",
+                end: "+=150%",
+                pin: true,
+                scrub: true
+              }
+            });
 
-             gsap.utils.toArray('.deck-card').forEach((card, i) => {
-               deckTl.to(card, {
-                 rotationZ: (i - 1) * 15,
-                 xPercent: (i - 1) * 10,
-                 y: Math.abs(i - 1) * 30,
-                 scale: 1.1,
-                 duration: 1
-               }, 0);
-             });
-           }, 1200);
+            gsap.utils.toArray('.deck-card').forEach((card, i) => {
+              deckTl.to(card, {
+                rotationZ: (i - 1) * 15,
+                xPercent: (i - 1) * 10,
+                y: Math.abs(i - 1) * 30,
+                scale: 1.1,
+                duration: 1
+              }, 0);
+            });
+          }, 1200);
 
-           scheduleDeferredSection(() => {
-             const listItems = gsap.utils.toArray('.list-item');
-             if (listItems.length) {
-               gsap.from(listItems, {
-                 x: -50, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out",
-                 scrollTrigger: { trigger: ".list-section", start: "top 90%" }
-               });
-             }
+          scheduleDeferredSection(() => {
+            const listItems = gsap.utils.toArray('.list-item');
+            if (listItems.length) {
+              gsap.from(listItems, {
+                x: -50, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out",
+                scrollTrigger: { trigger: ".list-section", start: "top 90%" }
+              });
+            }
 
-             gsap.from('.footer-content', {
-               y: 100, opacity: 0, duration: 2, ease: "expo.out",
-               scrollTrigger: { trigger: ".footer-section", start: "top 95%" }
-             });
-           }, 1500);
+            gsap.from('.footer-content', {
+              y: 100, opacity: 0, duration: 2, ease: "expo.out",
+              scrollTrigger: { trigger: ".footer-section", start: "top 95%" }
+            });
+          }, 1500);
         }, shouldConserve ? 120 : 200);
       }
     }, shouldConserve ? 16 : 20);
-    
+
     return () => {
       if (moveCursor) window.removeEventListener('mousemove', moveCursor);
       clearInterval(interval);
@@ -605,7 +653,118 @@ export default function App() {
       if (lenis) gsap.ticker.remove(raf);
       if (ctx) ctx.revert();
     };
-  }, [enableCursor, enableLenis, shouldConserve]);
+  }, [
+    containerRef,
+    cursorRef,
+    curtain1Ref,
+    curtainMedia1Ref,
+    curtainText1Ref,
+    curtain2Ref,
+    curtainMedia2Ref,
+    curtainText2Ref,
+    forgeSectionRef,
+    forgeItemsRef,
+    horizontalSectionRef,
+    horizontalWrapperRef,
+    storySectionRef,
+    storyTextRef,
+    storyImgRef,
+    deckSectionRef,
+    enableCursor,
+    enableLenis,
+    shouldConserve,
+    dispatchUi
+  ]);
+};
+
+export default function App() {
+  const containerRef = useRef();
+  const curtain1Ref = useRef();
+  const curtainMedia1Ref = useRef();
+  const curtainText1Ref = useRef();
+
+  const curtain2Ref = useRef();
+  const curtainMedia2Ref = useRef();
+  const curtainText2Ref = useRef();
+
+  const forgeSectionRef = useRef();
+  const forgeItemsRef = useRef([]);
+
+  const horizontalSectionRef = useRef();
+  const horizontalWrapperRef = useRef();
+
+  const storySectionRef = useRef();
+  const storyTextRef = useRef();
+  const storyImgRef = useRef();
+
+  const deckSectionRef = useRef();
+  const kineticSectionRef = useRef();
+
+  const [uiState, dispatchUi] = useReducer(uiReducer, undefined, createInitialUiState);
+  const perfProfile = useSyncExternalStore(
+    subscribePerformanceProfile,
+    getPerformanceProfileSnapshot,
+    () => INITIAL_PERFORMANCE_PROFILE
+  );
+  const cursorRef = useRef(null);
+
+  const {
+    shouldConserve,
+    enableCursor,
+    enableLenis,
+    allowHoverAudio,
+    allowAmbientAudio,
+    videoPreload,
+    canvasDpr,
+    showBackgroundCanvas,
+    backgroundSceneQuality,
+    kineticSceneQuality,
+    kineticPosterOnly
+  } = perfProfile;
+
+  const {
+    loading,
+    progress,
+    shouldMountKineticCanvas,
+    shouldLoadForgeMedia,
+    shouldLoadDigitalMasteryVideo
+  } = uiState;
+
+  useDeferredMediaLoading({
+    kineticSectionRef,
+    forgeSectionRef,
+    curtain2Ref,
+    kineticPosterOnly,
+    shouldConserve,
+    shouldLoadForgeMedia,
+    shouldLoadDigitalMasteryVideo,
+    dispatchUi
+  });
+
+  const playHover = usePointerAudio({ allowHoverAudio, allowAmbientAudio });
+
+  usePageOrchestration({
+    containerRef,
+    cursorRef,
+    curtain1Ref,
+    curtainMedia1Ref,
+    curtainText1Ref,
+    curtain2Ref,
+    curtainMedia2Ref,
+    curtainText2Ref,
+    forgeSectionRef,
+    forgeItemsRef,
+    horizontalSectionRef,
+    horizontalWrapperRef,
+    storySectionRef,
+    storyTextRef,
+    storyImgRef,
+    deckSectionRef,
+    enableCursor,
+    enableLenis,
+    shouldConserve,
+    dispatchUi
+  });
 
   const handleCursorHover = (type) => {
     if (!enableCursor) return;
@@ -620,288 +779,332 @@ export default function App() {
     : undefined;
 
   return (
-    <>
-      {enableCursor && <div ref={cursorRef} className="custom-cursor"></div>}
-      
-      <AnimatePresence>
-        {loading && (
-          <motion.div 
-            key="loader"
-            exit={{ opacity: 0, filter: 'blur(30px)', transition: { duration: 1.2, ease: "easeInOut" } }}
-            className="preloader"
-          >
-            <div style={{ overflow: 'hidden' }}>
-                <motion.div 
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                transition={{ duration: 1, ease: FRAMER_EASE_OUT_STRONG }}
-                style={{ fontSize: '0.9rem', letterSpacing: '10px', opacity: 0.6, marginBottom: '1.5rem' }}
-              >
-                WARPOD STUDIO INITIALIZING
-              </motion.div>
-            </div>
-            <div style={{ fontSize: '12vw', fontWeight: 900, fontFamily: 'ClashDisplay', letterSpacing: '-0.05em' }}>
-              {progress}%
-            </div>
-            <div className="progress-bar-container">
-              <div className="progress-bar" style={{ width: `${progress}%` }}></div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 2s ease', visibility: loading ? 'hidden' : 'visible' }}>
-        <div className="canvas-container">
-          {showBackgroundCanvas ? (
-            <CanvasBoundary fallback={<div className="canvas-fallback-orb canvas-fallback-orb--strong" />}>
-              <Suspense fallback={<div className="canvas-fallback-orb canvas-fallback-orb--loading" />}>
-                <BackgroundCanvas dpr={canvasDpr} quality={backgroundSceneQuality} />
-              </Suspense>
-            </CanvasBoundary>
-          ) : (
-            <div className="canvas-fallback-orb canvas-fallback-orb--strong" />
-          )}
-        </div>
-        
+    <LazyMotion features={domAnimation}>
+      {enableCursor && <div ref={cursorRef} className="custom-cursor" />}
+      <Preloader loading={loading} progress={progress} />
+      <div ref={containerRef} style={{ opacity: loading ? 0 : 1, transition: 'opacity 900ms ease', visibility: loading ? 'hidden' : 'visible' }}>
+        <BackgroundLayer showBackgroundCanvas={showBackgroundCanvas} canvasDpr={canvasDpr} backgroundSceneQuality={backgroundSceneQuality} />
         <main className="content">
-          {/* HERO SECTION */}
-          <section className="section" style={{ minHeight: '100vh', padding: '10vw' }}>
-            <h1 className="hero-title">
-              <SplitText>WARPOD</SplitText><br/>
-              <SplitText>STUDIO</SplitText>
-            </h1>
-            <motion.p 
-              initial={{ opacity: 0, y: 30 }}
-              animate={!loading ? { opacity: 0.7, y: 0 } : {}}
-              transition={{ duration: 1.5, delay: 1.2, ease: FRAMER_EASE_OUT }}
-              className="hero-subtitle"
-            >
-              Architecting High-End Digital Interfaces.
-            </motion.p>
-          </section>
-
-          {/* MARQUEE */}
-          <section className="marquee-container" onMouseEnter={() => handleCursorHover('glass-active')} onMouseLeave={() => handleCursorHover('')}>
-            <div className="marquee-content">
-              <span className="marquee-text">UI DESIGN</span>
-              <span className="marquee-text marquee-outline">UX STRATEGY</span>
-              <span className="marquee-text">BRAND IDENTITY</span>
-              <span className="marquee-text marquee-outline">MOTION SYSTEMS</span>
-              <span className="marquee-text">DIGITAL PRODUCTS</span>
-              <span className="marquee-text marquee-outline">WARPOD STUDIO</span>
-            </div>
-          </section>
-
-          {/* CURTAIN 1 */}
-          <section className="curtain-section" ref={curtain1Ref}>
-            <div className="curtain-sticky">
-              <div className="curtain-media" ref={curtainMedia1Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video src="/assets/videos/creative-vision-1080p.mp4" autoPlay loop muted playsInline preload={videoPreload} />
-              </div>
-              <h2 className="curtain-text" ref={curtainText1Ref}>
-                CREATIVE<br/>VISION.
-              </h2>
-            </div>
-          </section>
-
-          {/* SCRUB TEXT */}
-          <section className="scrub-section">
-            <p className="scrub-text">
-              <SplitWords text="WE ELEVATE DIGITAL STANDARDS THROUGH PURPOSEFUL DESIGN. OUR STUDIO CRAFTS UNIQUE VISUAL NARRATIVES AND SEAMLESS INTERFACES THAT CAPTIVATE EMOTIONS." />
-            </p>
-          </section>
-
-          {/* THE ARCHITECTURAL FORGE */}
-          <section className="forge-section" ref={forgeSectionRef}>
-            <div className="forge-sticky">
-              <div className="forge-title">THE ARCHITECTURAL FORGE</div>
-              {FORGE_STACK.map((item, i) => (
-                <div key={i} className="forge-item" ref={el => forgeItemsRef.current[i] = el}>
-                  <div className="forge-icon">
-                    <img
-                      src={shouldLoadForgeMedia ? `/assets/icons/${item.icon}` : undefined}
-                      alt={item.name}
-                      loading="lazy"
-                      decoding="async"
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                  <div className="forge-text">
-                    <h4>{item.name}</h4>
-                    <p>{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* CURTAIN 2 */}
-          <section className="curtain-section" ref={curtain2Ref}>
-            <div className="curtain-sticky">
-              <div className="curtain-media" ref={curtainMedia2Ref} onMouseEnter={() => handleCursorHover('active')} onMouseLeave={() => handleCursorHover('')}>
-                <video
-                  src={digitalMasteryVideoSrc}
-                  autoPlay={shouldLoadDigitalMasteryVideo}
-                  loop
-                  muted
-                  playsInline
-                  preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
-                />
-              </div>
-              <h2 className="curtain-text" ref={curtainText2Ref}>
-                DIGITAL<br/>MASTERY.
-              </h2>
-            </div>
-          </section>
-
-          {/* HORIZONTAL SHOWCASE */}
-          <section className="horizontal-scroll-container" ref={horizontalSectionRef}>
-            <div className="horizontal-wrapper" ref={horizontalWrapperRef}>
-              <div className="project-panel">
-                <div className="project-content">
-                  <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_4.jpg" alt="P1" loading="lazy" decoding="async" />
-                  </div>
-                  <div className="project-info">
-                    <h3>Luxury<br/>Systems.</h3>
-                    <p>High-end interface design for world-class fashion conglomerates, focusing on micro-interactions and performance.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="project-panel" style={{ background: '#050505' }}>
-                <div className="project-content">
-                  <div className="project-info">
-                    <h3 style={{ color: '#00d2ff' }}>Interactive<br/>Retail.</h3>
-                    <p>Redefining the digital shopping experience through seamless UX and immersive brand storytelling.</p>
-                  </div>
-                  <div className="project-image-box">
-                    <img src="/assets/images/premium_bg_1.jpg" alt="P2" loading="lazy" decoding="async" />
-                  </div>
-                </div>
-              </div>
-              <div className="project-panel">
-                <div className="project-content">
-                  <div className="project-image-box">
-                    <video
-                      src={digitalMasteryVideoSrc}
-                      autoPlay={shouldLoadDigitalMasteryVideo}
-                      loop
-                      muted
-                      playsInline
-                      preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
-                    />
-                  </div>
-                  <div className="project-info">
-                    <h3>Motion<br/>Identity.</h3>
-                    <p>Bringing brands to life through advanced motion systems and interactive visual components.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="project-panel" style={{ background: '#0a0a0a' }}>
-                <div className="project-content">
-                  <div className="project-info">
-                    <h3 style={{ color: '#fff' }}>Digital<br/>Core.</h3>
-                    <p>Scalable design systems that empower teams to build consistent and beautiful products at speed.</p>
-                  </div>
-                  <div className="project-image-box">
-                    <img src="/assets/images/bg1.jpg" alt="P4" loading="lazy" decoding="async" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* STORY PARALLAX */}
-          <section className="story-parallax-section" ref={storySectionRef}>
-            <div className="story-layer" style={{ zIndex: 1 }}>
-              <div className="story-bg-text" ref={storyTextRef}>CRAFTING DREAMS</div>
-            </div>
-            <div className="story-layer" style={{ zIndex: 2 }}>
-              <div className="story-floating-img" ref={storyImgRef}>
-                <img src="/assets/images/premium_bg_3.jpg" alt="Vision" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            </div>
-            <div className="story-layer" style={{ zIndex: 3 }}>
-               <h2 style={{ fontSize: '8vw', fontWeight: 900, textAlign: 'center', marginTop: '40vh' }}>The Future is Fluid.</h2>
-            </div>
-          </section>
-
-          {/* DECK SECTION */}
-          <section className="deck-section" ref={deckSectionRef}>
-             <div className="deck-container">
-               <div className="deck-card" style={{ zIndex: 1 }}>
-                  <img src="/assets/images/premium_bg_1.jpg" alt="UI Case A" loading="lazy" decoding="async" />
-               </div>
-               <div className="deck-card" style={{ zIndex: 2 }}>
-                  <img src="/assets/images/premium_bg_2.jpg" alt="UI Case B" loading="lazy" decoding="async" />
-               </div>
-               <div className="deck-card" style={{ zIndex: 3 }}>
-                  <img src="/assets/images/bg1.jpg" alt="UI Case C" loading="lazy" decoding="async" />
-               </div>
-             </div>
-          </section>
-
-          {/* PHILOSOPHY SECTION */}
-          <section className="section" style={{ minHeight: '120vh', padding: '10vw' }}>
-            <div className="glass-card" onMouseEnter={() => handleCursorHover('glass-active')} onMouseLeave={() => handleCursorHover('')}>
-              <h2>Design Excellence.</h2>
-              <h3>Visual Precision</h3>
-              <p className="philosophy-text">Every pixel is placed with intention, balancing beauty and function in every interface we build.</p>
-            </div>
-          </section>
-
-          {/* STATS SECTION */}
-          <section className="section stats-section">
-            <div className="stats-grid">
-              <div className="rv">
-                <h4 className="rv-label">SATISFACTION</h4>
-                <div className="rv-value accent">100%</div>
-              </div>
-              <div className="rv">
-                <h4 className="rv-label">PRECISION</h4>
-                <div className="rv-value tiny">PIXEL PERFECT</div>
-              </div>
-              <div className="rv">
-                <h4 className="rv-label">COMPONENTS</h4>
-                <div className="rv-value">5000+</div>
-              </div>
-            </div>
-          </section>
-
-          {/* KINETIC CORE (REALLY 3D) - FINAL INTERACTIVE SECTION */}
-          <section ref={kineticSectionRef} className="kinetic-section" style={{ minHeight: '100vh', background: '#000', paddingBottom: '0' }}>
-            <div style={{ position: 'relative', top: '10vh', width: '100%', textAlign: 'center', zIndex: 10, pointerEvents: 'none' }}>
-               <h2 style={{ fontSize: '8vw', fontWeight: 900, opacity: 0.3 }}>KINETIC CORE</h2>
-            </div>
-            <div className="local-canvas-wrapper" style={{ height: '80vh' }}>
-              {kineticPosterOnly ? (
-                <div className="kinetic-poster">
-                  <img src="/assets/images/render_3d_1.jpg" alt="Kinetic poster" loading="lazy" decoding="async" />
-                </div>
-              ) : shouldMountKineticCanvas ? (
-                <CanvasBoundary>
-                  <Suspense fallback={<div className="kinetic-poster kinetic-poster--loading" />}>
-                    <KineticCanvas dpr={canvasDpr} quality={kineticSceneQuality} />
-                  </Suspense>
-                </CanvasBoundary>
-              ) : (
-                <div className="kinetic-poster kinetic-poster--loading" />
-              )}
-            </div>
-          </section>
-
-          {/* FOOTER */}
-          <section className="section footer-section" style={{ padding: '5vw 10vw', textAlign: 'center', minHeight: '60vh', justifyContent: 'center', background: '#000', marginTop: '-2px' }}>
-            <Magnetic enabled={enableCursor}>
-              <div className="footer-content magnetic" style={{ cursor: 'none' }}>
-                <h2 style={{ fontSize: '12vw', fontWeight: 900, marginBottom: '2rem', lineHeight: 0.75, letterSpacing: '-0.06em' }}>LET&apos;S<br/>BUILD.</h2>
-                <p style={{ opacity: 0.4, letterSpacing: '8px', textTransform: 'uppercase', fontSize: '1rem' }}>WARPOD STUDIO &copy; 2026.</p>
-              </div>
-            </Magnetic>
-          </section>
+          <HeroSection loading={loading} />
+          <MarqueeSection onHover={handleCursorHover} />
+          <CurtainSection
+            sectionRef={curtain1Ref}
+            mediaRef={curtainMedia1Ref}
+            textRef={curtainText1Ref}
+            videoSrc="/assets/videos/creative-vision-1080p.mp4"
+            autoPlay
+            preload={videoPreload}
+            onHover={handleCursorHover}
+            title="CREATIVE"
+            subtitle="VISION."
+          />
+          <ScrubSection />
+          <ForgeSection sectionRef={forgeSectionRef} forgeItemsRef={forgeItemsRef} shouldLoadForgeMedia={shouldLoadForgeMedia} />
+          <CurtainSection
+            sectionRef={curtain2Ref}
+            mediaRef={curtainMedia2Ref}
+            textRef={curtainText2Ref}
+            videoSrc={digitalMasteryVideoSrc}
+            autoPlay={shouldLoadDigitalMasteryVideo}
+            preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
+            onHover={handleCursorHover}
+            title="DIGITAL"
+            subtitle="MASTERY."
+          />
+          <HorizontalShowcase
+            sectionRef={horizontalSectionRef}
+            wrapperRef={horizontalWrapperRef}
+            digitalMasteryVideoSrc={digitalMasteryVideoSrc}
+            shouldLoadDigitalMasteryVideo={shouldLoadDigitalMasteryVideo}
+            videoPreload={videoPreload}
+          />
+          <StorySection sectionRef={storySectionRef} textRef={storyTextRef} imageRef={storyImgRef} />
+          <DeckSection sectionRef={deckSectionRef} />
+          <PhilosophySection onHover={handleCursorHover} />
+          <StatsSection />
+          <KineticCoreSection
+            sectionRef={kineticSectionRef}
+            kineticPosterOnly={kineticPosterOnly}
+            shouldMountKineticCanvas={shouldMountKineticCanvas}
+            canvasDpr={canvasDpr}
+            kineticSceneQuality={kineticSceneQuality}
+          />
+          <FooterSection enableCursor={enableCursor} />
         </main>
       </div>
       <Analytics />
-    </>
+    </LazyMotion>
   );
 }
+
+const Preloader = ({ loading, progress }) => (
+  <AnimatePresence>
+    {loading && (
+      <m.div
+        key="loader"
+        exit={{ opacity: 0, filter: 'blur(8px)', transition: { duration: 0.8, ease: "easeInOut" } }}
+        className="preloader"
+      >
+        <div style={{ overflow: 'hidden' }}>
+          <m.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            transition={{ duration: 1, ease: FRAMER_EASE_OUT_STRONG }}
+            style={{ fontSize: '0.9rem', letterSpacing: '0.05em', opacity: 0.6, marginBottom: '1.5rem' }}
+          >
+            WARPOD STUDIO INITIALIZING
+          </m.div>
+        </div>
+        <div style={{ fontSize: '12vw', fontWeight: 900, fontFamily: 'ClashDisplay', letterSpacing: '-0.05em' }}>
+          {progress}%
+        </div>
+        <div className="progress-bar-container">
+          <div className="progress-bar" style={{ width: `${progress}%` }} />
+        </div>
+      </m.div>
+    )}
+  </AnimatePresence>
+);
+
+const BackgroundLayer = ({ showBackgroundCanvas, canvasDpr, backgroundSceneQuality }) => (
+  <div className="canvas-container">
+    {showBackgroundCanvas ? (
+      <CanvasBoundary fallback={<div className="canvas-fallback-orb canvas-fallback-orb--strong" />}>
+        <Suspense fallback={<div className="canvas-fallback-orb canvas-fallback-orb--loading" />}>
+          <BackgroundCanvas dpr={canvasDpr} quality={backgroundSceneQuality} />
+        </Suspense>
+      </CanvasBoundary>
+    ) : (
+      <div className="canvas-fallback-orb canvas-fallback-orb--strong" />
+    )}
+  </div>
+);
+
+const HeroSection = ({ loading }) => (
+  <section className="section" style={{ minHeight: '100vh', padding: '10vw' }}>
+    <h1 className="hero-title">
+      <SplitText>WARPOD</SplitText><br />
+      <SplitText>STUDIO</SplitText>
+    </h1>
+    <m.p
+      initial={{ opacity: 0, y: 30 }}
+      animate={!loading ? { opacity: 0.7, y: 0 } : {}}
+      transition={{ duration: 1.5, delay: 1.2, ease: FRAMER_EASE_OUT }}
+      className="hero-subtitle"
+    >
+      Architecting High-End Digital Interfaces.
+    </m.p>
+  </section>
+);
+
+const MarqueeSection = ({ onHover }) => (
+  <section className="marquee-container" onMouseEnter={() => onHover('glass-active')} onMouseLeave={() => onHover('')}>
+    <div className="marquee-content">
+      <span className="marquee-text">UI DESIGN</span>
+      <span className="marquee-text marquee-outline">UX STRATEGY</span>
+      <span className="marquee-text">BRAND IDENTITY</span>
+      <span className="marquee-text marquee-outline">MOTION SYSTEMS</span>
+      <span className="marquee-text">DIGITAL PRODUCTS</span>
+      <span className="marquee-text marquee-outline">WARPOD STUDIO</span>
+    </div>
+  </section>
+);
+
+const CurtainSection = ({ sectionRef, mediaRef, textRef, videoSrc, autoPlay, preload, onHover, title, subtitle }) => (
+  <section className="curtain-section" ref={sectionRef}>
+    <div className="curtain-sticky">
+      <div className="curtain-media" ref={mediaRef} onMouseEnter={() => onHover('active')} onMouseLeave={() => onHover('')}>
+        <video src={videoSrc} autoPlay={autoPlay} loop muted playsInline preload={preload} />
+      </div>
+      <h2 className="curtain-text" ref={textRef}>
+        {title}<br />{subtitle}
+      </h2>
+    </div>
+  </section>
+);
+
+const ScrubSection = () => (
+  <section className="scrub-section">
+    <p className="scrub-text">
+      <SplitWords text="WE ELEVATE DIGITAL STANDARDS THROUGH PURPOSEFUL DESIGN. OUR STUDIO CRAFTS UNIQUE VISUAL NARRATIVES AND SEAMLESS INTERFACES THAT CAPTIVATE EMOTIONS." />
+    </p>
+  </section>
+);
+
+const ForgeSection = ({ sectionRef, forgeItemsRef, shouldLoadForgeMedia }) => (
+  <section className="forge-section" ref={sectionRef}>
+    <div className="forge-sticky">
+      <div className="forge-title">THE ARCHITECTURAL FORGE</div>
+      {FORGE_STACK.map((item, i) => (
+        <div key={item.name} className="forge-item" ref={el => forgeItemsRef.current[i] = el}>
+          <div className="forge-icon">
+            <img
+              src={shouldLoadForgeMedia ? `/assets/icons/${item.icon}` : undefined}
+              alt={item.name}
+              loading="lazy"
+              decoding="async"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div className="forge-text">
+            <h4>{item.name}</h4>
+            <p>{item.desc}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+);
+
+const HorizontalShowcase = ({ sectionRef, wrapperRef, digitalMasteryVideoSrc, shouldLoadDigitalMasteryVideo, videoPreload }) => (
+  <section className="horizontal-scroll-container" ref={sectionRef}>
+    <div className="horizontal-wrapper" ref={wrapperRef}>
+      <div className="project-panel">
+        <div className="project-content">
+          <div className="project-image-box">
+            <img src="/assets/images/premium_bg_4.jpg" alt="P1" loading="lazy" decoding="async" />
+          </div>
+          <div className="project-info">
+            <h3>Luxury<br />Systems.</h3>
+            <p>High-end interface design for world-class fashion conglomerates, focusing on micro-interactions and performance.</p>
+          </div>
+        </div>
+      </div>
+      <div className="project-panel" style={{ background: '#050505' }}>
+        <div className="project-content">
+          <div className="project-info">
+            <h3 style={{ color: '#00d2ff' }}>Interactive<br />Retail.</h3>
+            <p>Redefining the digital shopping experience through seamless UX and immersive brand storytelling.</p>
+          </div>
+          <div className="project-image-box">
+            <img src="/assets/images/premium_bg_1.jpg" alt="P2" loading="lazy" decoding="async" />
+          </div>
+        </div>
+      </div>
+      <div className="project-panel">
+        <div className="project-content">
+          <div className="project-image-box">
+            <video
+              src={digitalMasteryVideoSrc}
+              autoPlay={shouldLoadDigitalMasteryVideo}
+              loop
+              muted
+              playsInline
+              preload={shouldLoadDigitalMasteryVideo ? videoPreload : 'none'}
+            />
+          </div>
+          <div className="project-info">
+            <h3>Motion<br />Identity.</h3>
+            <p>Bringing brands to life through advanced motion systems and interactive visual components.</p>
+          </div>
+        </div>
+      </div>
+      <div className="project-panel" style={{ background: '#0a0a0a' }}>
+        <div className="project-content">
+          <div className="project-info">
+            <h3 style={{ color: '#fff' }}>Digital<br />Core.</h3>
+            <p>Scalable design systems that empower teams to build consistent and beautiful products at speed.</p>
+          </div>
+          <div className="project-image-box">
+            <img src="/assets/images/bg1.jpg" alt="P4" loading="lazy" decoding="async" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const StorySection = ({ sectionRef, textRef, imageRef }) => (
+  <section className="story-parallax-section" ref={sectionRef}>
+    <div className="story-layer" style={{ zIndex: 1 }}>
+      <div className="story-bg-text" ref={textRef}>CRAFTING DREAMS</div>
+    </div>
+    <div className="story-layer" style={{ zIndex: 2 }}>
+      <div className="story-floating-img" ref={imageRef}>
+        <img src="/assets/images/premium_bg_3.jpg" alt="Vision" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+    </div>
+    <div className="story-layer" style={{ zIndex: 3 }}>
+      <h2 style={{ fontSize: '8vw', fontWeight: 600, textAlign: 'center', marginTop: '40vh' }}>The Future is Fluid.</h2>
+    </div>
+  </section>
+);
+
+const DeckSection = ({ sectionRef }) => (
+  <section className="deck-section" ref={sectionRef}>
+    <div className="deck-container">
+      <div className="deck-card" style={{ zIndex: 1 }}>
+        <img src="/assets/images/premium_bg_1.jpg" alt="UI Case A" loading="lazy" decoding="async" />
+      </div>
+      <div className="deck-card" style={{ zIndex: 2 }}>
+        <img src="/assets/images/premium_bg_2.jpg" alt="UI Case B" loading="lazy" decoding="async" />
+      </div>
+      <div className="deck-card" style={{ zIndex: 3 }}>
+        <img src="/assets/images/bg1.jpg" alt="UI Case C" loading="lazy" decoding="async" />
+      </div>
+    </div>
+  </section>
+);
+
+const PhilosophySection = ({ onHover }) => (
+  <section className="section" style={{ minHeight: '120vh', padding: '10vw' }}>
+    <div className="glass-card" onMouseEnter={() => onHover('glass-active')} onMouseLeave={() => onHover('')}>
+      <h2>Design Excellence.</h2>
+      <h3>Visual Precision</h3>
+      <p className="philosophy-text">Every pixel is placed with intention, balancing beauty and function in every interface we build.</p>
+    </div>
+  </section>
+);
+
+const StatsSection = () => (
+  <section className="section stats-section">
+    <div className="stats-grid">
+      <div className="rv">
+        <h4 className="rv-label">SATISFACTION</h4>
+        <div className="rv-value accent">100%</div>
+      </div>
+      <div className="rv">
+        <h4 className="rv-label">PRECISION</h4>
+        <div className="rv-value tiny">PIXEL PERFECT</div>
+      </div>
+      <div className="rv">
+        <h4 className="rv-label">COMPONENTS</h4>
+        <div className="rv-value">5000+</div>
+      </div>
+    </div>
+  </section>
+);
+
+const KineticCoreSection = ({ sectionRef, kineticPosterOnly, shouldMountKineticCanvas, canvasDpr, kineticSceneQuality }) => (
+  <section ref={sectionRef} className="kinetic-section" style={{ minHeight: '100vh', background: '#020205', paddingBottom: '0' }}>
+    <div style={{ position: 'relative', top: '10vh', width: '100%', textAlign: 'center', zIndex: 10, pointerEvents: 'none' }}>
+      <h2 style={{ fontSize: '8vw', fontWeight: 600, opacity: 0.3 }}>KINETIC CORE</h2>
+    </div>
+    <div className="local-canvas-wrapper" style={{ height: '80vh' }}>
+      {kineticPosterOnly ? (
+        <div className="kinetic-poster">
+          <img src="/assets/images/render_3d_1.jpg" alt="Kinetic poster" loading="lazy" decoding="async" />
+        </div>
+      ) : shouldMountKineticCanvas ? (
+        <CanvasBoundary>
+          <Suspense fallback={<div className="kinetic-poster kinetic-poster--loading" />}>
+            <KineticCanvas dpr={canvasDpr} quality={kineticSceneQuality} />
+          </Suspense>
+        </CanvasBoundary>
+      ) : (
+        <div className="kinetic-poster kinetic-poster--loading" />
+      )}
+    </div>
+  </section>
+);
+
+const FooterSection = ({ enableCursor }) => (
+  <section className="section footer-section" style={{ padding: '5vw 10vw', textAlign: 'center', minHeight: '60vh', justifyContent: 'center', background: '#020205', marginTop: '-2px' }}>
+    <Magnetic enabled={enableCursor}>
+      <div className="footer-content magnetic" style={{ cursor: 'none' }}>
+        <h2 style={{ fontSize: '12vw', fontWeight: 600, marginBottom: '2rem', lineHeight: 0.75, letterSpacing: 0 }}>LET&apos;S<br />BUILD.</h2>
+        <p style={{ opacity: 0.4, letterSpacing: '8px', textTransform: 'uppercase', fontSize: '1rem' }}>WARPOD STUDIO &copy; 2026.</p>
+      </div>
+    </Magnetic>
+  </section>
+);

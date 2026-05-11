@@ -1,3 +1,4 @@
+/* oxlint-disable react/no-unknown-property */
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Float, useGLTF, ContactShadows, Environment } from '@react-three/drei';

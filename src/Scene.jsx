@@ -1,3 +1,4 @@
+/* oxlint-disable react/no-unknown-property */
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Environment, Float, Sphere, Stars } from '@react-three/drei';
@@ -44,6 +45,7 @@ export default function Scene({ quality = 'full' }) {
   const bubbles = useMemo(
     () =>
       Array.from({ length: bubbleCount }).map((_, i) => ({
+        id: `bubble-${bubbleCount}-${i}`,
         position: [(Math.random() - 0.5) * 15, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10],
         size: Math.random() * 0.5 + 0.2,
         speed: Math.random() * 0.5 + 0.2,
@@ -82,8 +84,8 @@ export default function Scene({ quality = 'full' }) {
 
       <group ref={groupRef}>
         <Stars radius={100} depth={50} count={isReduced ? 900 : 2000} factor={4} saturation={0} fade speed={0.5} />
-        {bubbles.map((props, i) => (
-          <Bubble key={i} {...props} />
+        {bubbles.map(({ id, ...props }) => (
+          <Bubble key={id} {...props} />
         ))}
       </group>
 
